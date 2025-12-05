@@ -1,12 +1,8 @@
-This file provides an explanation of how to use our implementation of monotonic max-sum GNNs. The code and our main Python scripts are documented, ode is documented, so please check the code documentation and the help command in each script for further details. Unless otherwise noted, all file and folder names in this document are relative to the root folder of the supplemental material.
+This file explains how to use our implementation of monotonic GNNs. Please check the help command in each script for further details. Unless otherwise noted, all file and folder names in this document are relative to the root folder of the supplemental material. This project is licensed under the Apache License 2.0 – see the LICENSE file for details.
 
 # MGNNs 
 
-This section describes the implementation of the MGNN models that we describe in the main paper, including methods to train a model, apply a model to a dataset, calculate classification metrics on the model predictions, extract rules learned by the model, and compare the rules learned by the model with the rules extracted by the system AnyBURL. 
-
-## Prerequisites
-
-This code requires [PyTorch](https://pytorch.org/) and [PyTorch Geometric](https://github.com/rusty1s/pytorch_geometric); it was tested with Python v3.7.7, PyTorch v1.5.0 and PyTorch Geometric v1.5.0. To apply a rule's immediate consequence operator to dataset we use RDFox. An [RDFox](https://www.oxfordsemantic.tech/product "RDFox product page") server is required, which is a commercial product available under academic license. It requires a UNIX-based operating system to run (but should be very simple to modify to run on Windows - just change the way directories are referenced).
+This code requires [PyTorch](https://pytorch.org/) and [PyTorch Geometric](https://github.com/rusty1s/pytorch_geometric); it was tested with Python v3.7.7, PyTorch v1.5.0 and PyTorch Geometric v1.5.0. 
 
 ## Directory Structure
 
@@ -14,38 +10,65 @@ The following basic directory structure is required to run our implementation of
 
 ```bash
 .
+├── data 
+├── encoders 
+├── explanations 
 ├── metrics
 ├── models
 │   └── checkpoints
-├── predicates
-├── predictions
-└── rules
-    └── extracted 
+└── predictions
+
 ```
+
+The ```./data``` folder contains the _dataset folders_, which in turn contain training, validation, and testing data.
+
+The ```./encoders``` folder contains the encoding-decoding schemes generated for specific data.
+
+The ```./explanations``` folder contains the extracted rules that explain predicted facts.
+
 The ```./metrics``` folder contains the classification metrics generated using ```./calculate_classification_metrics.py```
 
-The ```./models``` folder is where any models trained using ```./train.py``` will be saved, and the ```./models/checkpoints``` subfolder is where checkpoint models will be saved during training.
+The ```./models``` folder is where any models trained will be saved, with the ```./models/checkpoints``` subfolder for snapshots of the model generated mid-training. 
 
-The ```./predicates``` folder should contain a predicates csv for every dataset being experimented with: this represents the predicate signature being worked with, and is required to generate consistent feature vectors.  For any dataset, the predicates file should be named ```{$1}_predicates.csv```, where {$1} is the name of the dataset. Each predicates csv should contain the predicate names and their corresponding arities: see ```./predicates/GraIL-BM_WN18RR_v1_predicates.csv``` for an example. The predicates csv file can be generated from a dataset using the script ```./predicate_extractor.py``` and the following command: 
-```bash
-python predicate_extractor.py  {$1}
-```
-where {$1} is the filename of the dataset.  
-
-The ```./predictions``` folder contains predictions made by the model, generated using ```./evaluate.py```
-
-The ```./rules/extracted``` subfolder contains rules extracted using ```./extract_rules.py```
+The ```./predictions``` folder contains the facts predicted by the model.
 
 
-## Training 
+## Data Structure
 
-All dataset files should contain a single triple per line. Entities in a triple should separated by a single tabulation, and written in the following order, from left to right:  head entity, relation, and tail entity. This is a common format used in KG datasets. 
+We recommend that all training and testing data for our application is packaged into **datasets**. A **dataset** consists of a named folder containing the following files:
 
-Training an MGNN requires two datasets: a file with an _incomplete_ dataset, used as input to the MGNN, and a file with the dataset that _completes_ it, whose facts are used as positive examples. To train an MGNN, run the script ```./train.py```.  The ```--dataset-name``` argument is the name of the benchmark or predicate signature, and should match the name used in the ```./predicates``` folder. The ```--train-graph``` argument is the file name of the incomplete dataset, and the ```--train-facts``` argument is the file name of the completing dataset. Please run the help option `-h` of the script for a full list of its parameters and options. As an example, here we give the training command for the benchmark GraIL-BM_WN18RR_v1 that we use in the evaluation section of the paper.
-```bash
-python train.py --dataset-name GraIL-BM_WN18RR_v1 --training-scheme from-data --encoding-scheme EC --train-graph ./data/GraIL-BM_WN18RR_v1/train/mgnn_split/train_graph.txt --train-facts ./data/GraIL-BM_WN18RR_v1/train/mgnn_split/train_facts.txt 
-```
-This will store the learned model in ```./models/GraIL-BM_WN18RR_v1_from-data_EC.pt``` and save a snapshot model in `./models/checkpoints` once every 1000 epochs. 
+- predicates
+- training
+    - graph
+    - positive_examples
+- validation
+    - graph
+    - positive_examples
+    - negative_examples
+-testing
+    - graph
+    - positive_examples
+    - negative_examples
+     
+The ```predicates''' file is a csv file where each line corresponds a predicate in the signature. The line format is "[predicate name],[arity]" where the arity is written as either 1 or 2.
+
+The graph, positive, and negative examples files for training, validation, and testing should be expressed as a tsv file. Each line corresponds to a single fact of the form "[subject]\t[relation]\t[object]". For unary files, the relation must be ```http://www.w3.org/1999/02/22-rdf-syntax-ns#type```. Relations other than the type predicate **must** appear in ```predicates.csv``` with arity 2. If the rdf:type predicate is used as relation, the corresponding object entity **must** appear in ```predicates.csv``` with arity 1. Please note that it is not necessary to list entity names in the graph. This project supports the so-called "inductive setting" where testing and validation files can mention entity names not seen during training.
+
+## How to Train Your MGNN 
+
+Please, run the script ```src/train.py``` to train your MGNN. We next cover the most common usage options.
+
+- ```--model-name```: name of the model that will be stored.
+- ```--model-folder```: name of the folder where models are stored.
+- ```--encoder-folder```: name of the folder where models are stored.
+- ```--train-graph```: name of the folder where the training graph is stored.
+- ```--train-examples```: name of the folder where the training positive examples file is stored.
+- ```--encoding_scheme```: chosen encoding/decoding scheme.
+- ```--predicates```: name of the predicates.csv file to be used.
+- ```--aggregation```: choice of aggregation functions: "max-max", "max-sum", "sum-max", "sum-sum"
+- ```--non-negative-weights```: "True" or "False" for using negative or non-negative weights.
+
+EVERYTHING UNDER THIS LINE IS NOT UP TO DATE. YONDER BE DRAGONS
 
 ## Applying a model 
 
@@ -182,5 +205,11 @@ where {$1} is the name of the benchmark, and {$2} is either ``valid`` for valida
 To calculate the classification metrics for the testing results (and analogously for validation), we run the script ```./DRUM-master/drum_classification_analyser.py``` which processes the output by the DRUM system and computes the classification metrics for several thresholds, which it stores in ```./DRUM-master/exps/{$1}/test/ckpt```,with {$1} the name of the benchmark. For example, for GraIL-BM_WN18RR_v1 we can use the following command:
 ```bash
 python ./DRUM-master/drum_classification_analyser.py --scores ./DRUM-master/exps/GraIL-BM_WN18RR_v1/test/test_preds_and_probs.txt --truths ./data/GraIL-BM_WN18RR_v1/test/test_all_examples_with_truth_values.txt --output ./DRUM-master/exps/GraIL-BM_WN18RR_v1/test/metrics.txt
+
 ```
+
+
+To apply a rule's immediate consequence operator to dataset we use RDFox. An [RDFox](https://www.oxfordsemantic.tech/product "RDFox product page") server is required, which is a commercial product available under academic license. It requires a UNIX-based operating system to run (but should be very simple to modify to run on Windows - just change the way directories are referenced).
+
+
 
