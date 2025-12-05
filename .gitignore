@@ -1,0 +1,23 @@
+# Python cache / compiled files
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# OS-specific
+.DS_Store
+
+# IDE / editor junk
+.vscode/
+.idea/
+*.swp
