@@ -1,5 +1,4 @@
-This file provides an explanation of how to use our implementation of the MGNN architecture described in the paper "Explainable GNN-Based Models over Knowledge Graphs". It also contains instructions to
-reproduce the results given in Section 4 (Evaluation) of the paper. All code and scripts produced by us are documented, so please check the code documentation and the help command in each script for further details. Unless otherwise noted, all file and folder names in this document are relative to the root folder of the supplemental material.
+This file provides an explanation of how to use our implementation of monotonic max-sum GNNs. The code and our main Python scripts are documented, ode is documented, so please check the code documentation and the help command in each script for further details. Unless otherwise noted, all file and folder names in this document are relative to the root folder of the supplemental material.
 
 # MGNNs 
 

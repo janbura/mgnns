@@ -130,7 +130,7 @@ if __name__ == "__main__":
 
     print("Evaluating model {} on dataset {} using threshold={}".format(args.load_model_name,
                                                                         args.test_graph, args.threshold))
-    model = torch.load(args.load_model_name).to(device)
+    model = torch.load(args.load_model_name, weights_only=False).to(device)
 
     def threshold_matrix_values(matrix: torch.tensor, threshold: float, negative_only=False):
         below_threshold_mask = matrix <= -threshold
@@ -187,7 +187,7 @@ if __name__ == "__main__":
         output.close()
 
     threshold_list = [0.0000000001, 0.000000001, 0.000000001, 0.00000001, 0.0000001, 0.000001, 0.00001, 0.0001, 0.001] \
-                     + arange(0.01, 1, 0.01).tolist()
+                     + arange(0.01, 1, 0.01).tolist() + [0.999, 0.9999]
     threshold_list = [round(elem, 10) for elem in threshold_list]
     number_of_positives = 0
     number_of_negatives = 0

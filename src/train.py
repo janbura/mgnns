@@ -170,7 +170,8 @@ if __name__ == "__main__":
             y = batch.y
             # Construct a weight matrix with weight of 5.0 wherever there is a
             # 1 output in the y vector, 0.5 where there is a 0.
-            weight = torch.tensor([0.5, 5.0]).to(device)
+            # This improves the propagation of the gradients.  # 0.1 and 10 gives very good results, for some reason!
+            weight = torch.tensor([1.0, 5.0]).to(device)
             # .data is a tensor method that gives you the values; .long() transforms it to long format
             # ALSO: bear in mind that y is going to be a single number, because it is just one element in the batch
             # ALSO: view_as is an operation of tensors to make it look the same size as y: so essentially we are looking
@@ -216,7 +217,7 @@ if __name__ == "__main__":
 
     print("Training model {}.".format(args.model_name))
 
-    for epoch in range(50000):
+    for epoch in range(3000):
         loss = train()
         if min_loss is None: min_loss = loss
         if epoch % divisor == 0:

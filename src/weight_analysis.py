@@ -10,21 +10,18 @@ import rdflib as rdf
 from encoding_schemes import CanonicalEncoderDecoder, ICLREncoderDecoder
 from utils import load_predicates
 
-parser = argparse.ArgumentParser(description="Evaluate a trained GNNs")
+parser = argparse.ArgumentParser(description="Output the weights of the model")
 parser.add_argument('--load-model-name',
                     help='Filename of trained model to load')
 parser.add_argument('--predicates',
                     help='File with the fixed, ordered list of predicates we consider.')
-parser.add_argument('--output',
-                    default=None,
-                    help='Print the classification metrics.')
 args = parser.parse_args()
 
 if __name__ == "__main__":
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    model = torch.load(args.load_model_name).to(device)
+    model = torch.load(args.load_model_name, weights_only=False).to(device)
 
     for name, param in model.named_parameters():
         print("NAME : {}".format(name))

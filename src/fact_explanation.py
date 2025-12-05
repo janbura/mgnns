@@ -78,7 +78,7 @@ if __name__ == "__main__":
     gd_row_to_node_dict = {node_to_gd_row_dict[node]: node for node in node_to_gd_row_dict}
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     gd_data = Data(x=gd_features, edge_index=gd_edge_list, edge_type=gd_edge_colour_list).to(device)
-    model = torch.load(args.load_model_name).to(device)
+    model = torch.load(args.load_model_name, weights_only=False).to(device)
     model.eval()
     gnn_output_gd = model.all_labels(gd_data)
 

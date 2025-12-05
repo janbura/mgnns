@@ -9,6 +9,8 @@ one for coloured edges, and one for colourless edges.
 
 @author: ----
 """
+from os import write
+
 import torch
 
 from torch_geometric.nn import MessagePassing
