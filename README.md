@@ -52,45 +52,41 @@ We recommend that all training and testing data for our application is packaged 
      
 The ```predicates''' file is a csv file where each line corresponds a predicate in the signature. The line format is "[predicate name],[arity]" where the arity is written as either 1 or 2.
 
-The graph, positive, and negative examples files for training, validation, and testing should be expressed as a tsv file. Each line corresponds to a single fact of the form "[subject]\t[relation]\t[object]". For unary files, the relation must be ```http://www.w3.org/1999/02/22-rdf-syntax-ns#type```. Relations other than the type predicate **must** appear in ```predicates.csv``` with arity 2. If the rdf:type predicate is used as relation, the corresponding object entity **must** appear in ```predicates.csv``` with arity 1. Please note that it is not necessary to list entity names in the graph. This project supports the so-called "inductive setting" where testing and validation files can mention entity names not seen during training.
+The graph, positive, and negative examples files for training, validation, and testing should be expressed as a tsv file. Each line corresponds to a single fact of the form "[subject]\t[relation]\t[object]". For unary files, the relation must be ```http://www.w3.org/1999/02/22-rdf-syntax-ns#type```. [relation]s other than the type predicate **must** appear in ```predicates.csv``` with arity 2. If rdf:type is used as [relation], then the corresponding [object] **must** appear in ```predicates.csv``` with arity 1. Please note that it is not necessary to provide a list of entity names, as this system supports the so-called "inductive setting" where testing and validation files can mention entity names not seen during training.
 
 ## How to Train Your MGNN 
 
-Please, run the script ```src/train.py``` to train your MGNN. We next cover the most common usage options.
+Please run the script ```src/train.py``` to train your MGNN. You can run the script using the following arguments:
 
-- ```--model-name```: name of the model that will be stored.
-- ```--model-folder```: name of the folder where models are stored.
-- ```--encoder-folder```: name of the folder where models are stored.
-- ```--train-graph```: name of the folder where the training graph is stored.
-- ```--train-examples```: name of the folder where the training positive examples file is stored.
-- ```--encoding_scheme```: chosen encoding/decoding scheme.
-- ```--predicates```: name of the predicates.csv file to be used.
-- ```--aggregation```: choice of aggregation functions: "max-max", "max-sum", "sum-max", "sum-sum"
-- ```--non-negative-weights```: "True" or "False" for using negative or non-negative weights.
+- ```--model-name```: name (not path) of the model that will be stored
+- ```--model-folder```: path of the folder where the trained model will be stored 
+- ```--encoder-folder```: path of the folder where models are stored 
+- ```--train-graph```: path of the folder where the training graph is stored.
+- ```--train-examples```: path of the folder where the training positive examples file is stored.
+- ```--encoding_scheme```: chosen encoding/decoding scheme (currently supported: ```canonical``` and ```iclr22```)
+- ```--predicates```: path of the predicates.csv file to be used.
+- ```--aggregation```: choice of aggregation functions (currently supported: ```max-max```, ```max-sum```, ```sum-max```, ```sum-sum```)
+- ```--non-negative-weights```: set to True to use only nonnegative weights; set to False to allow negative weights (in addition to nonnegative).
 
-EVERYTHING UNDER THIS LINE IS NOT UP TO DATE. YONDER BE DRAGONS
+Please run the script with the help option ```-h``` to access an exhaustive link of arguments and options. 
 
-## Applying a model 
+## How to Test Your MGNN
 
-To apply an MGNN model to a dataset, run the script ```./evaluate.py```. The ```--dataset-name``` is the name of the benchmark to which the dataset belongs, which is used to find the corresponding set of predicates in the ```./predicates``` folder. The ```--load-model-name``` is the name of the file containing the model that we wish to apply. The ```--test-graph``` argument is the file name of the dataset that we wish to apply the model to.
+Please run the script ```src/test.py``` to apply your MGNN to a dataset. The script arguments are the following:
 
-For our experiments, we use the argument ```--test-facts```, which is the file name of a dataset of _target_ facts. For each target fact, the script will output a _score_ equal to the output of the MGNN transformation for the fact, but without applying the Boolean classification function in the last layer of the model. Then, in the next step of the pipeline, we will compare directly these scores with different thresholds. This is an efficient way to check if a fact has been derived by the MGNN model for different classification thresholds, instead of having to apply the whole MGNN model to the dataset once for each threshold.  Please run the help option `-h` of the script for a full list of its parameters and options.
+- ```--load-model-name```: path of the trained model to load
+- ```--canonical-encoder-file```: path of the canonical encoder/decoder used to train this model
+- ```--iclr22-encoder-file```: (optional) path of the iclr22 encoder/decoder used to train this model
+- ```--encoding-scheme```: chosen encoding/decoding scheme (currently supported: ```canonical``` and ```iclr22```)
+- ```--threshold```: threshold parameter to be used for prediction; values above the threshold are classified as positive, all others as negative 
+- ```--predicates```: path of the predicates.csv file to be used.
+- ```--test-graph```: path of the graph to which the MGNN is applied 
+- ```--test-positive-examples```: path of the file with positive test examples (those the MGNN *should* predict)
+- ```--test-positive-examples```: path of the file with negative test examples (those the MGNN *should not* predict)
+- ```--output```: path of the file where the classification metrics will be printed
+- ```--encoding-scheme```: choose the encoder-decoder that will be applied to the data (choices: 'iclr22' or 'canonical')
 
-As an example, here we give the command for applying the model trained for the benchmark GraIL-BM_WN18RR_v1 to the test data used in the evaluation section of the paper. Please note that, in this example, the `--test-graph` argument is the incomplete testing dataset S_I described in the paper, and the `--test-facts` arguments is the target dataset consisting of all positive and negative test examples, since we need to check whether the model derives these facts (while other facts are irrelevant). Please see the _Benchmarks_ section below for further info on the test data for the experiments in the paper. 
-
-```bash
-python test.py --dataset-name GraIL-BM_WN18RR_v1 --load-model-name GraIL-BM_WN18RR_v1_from-data_EC --encoding-scheme EC --test-data --test-graph ./data/GraIL-BM_WN18RR_v1/test/test-graph.txt --test-examples  ./data/GraIL-BM_WN18RR_v1/test/test-fact.txt --print-entailed-facts ./predictions/classification/GraIL-BM_WN18RR_v1 --get-scores
-```
-
-The command will store in ```./predictions/classification/GraIL-BM_WN18RR_v1``` the predictions for all target facts.
-
-## Calculating classification metrics
-
-To evaluate the classification metrics for different thresholds on the predictions produced in the previous step, run the script ```./calculate_classification_metrics.py```. The argument ``--scores`` should be the predictions file produced by the previous script. The argument ``--truths`` should be a file identical to the target dataset file used in the previous step, but where each fact is followed (separated by tabulation) by a Boolean value indicating whether the example is positive or negative (1 for positive, 0 for negative). Again, please run the script with option `-h` for a full list of parameters and options. We follow the running example and present the command that we used to calculate the classification metrics for the testing phase in benchmark GraIL-BM_WN18RR_v1 in the experimental evaluation described in the paper. 
-```bash
-python calculate_classification_metrics.py --scores ./predictions/classification/GraIL-BM_WN18RR_v1 --truths ./data/GraIL-BM_WN18RR_v1/test/test_all_examples_with_truth_values.txt --output ./metrics/classification/GraIL-BM_WN18RR_v1
-```
-This will store in ```./metrics/classification/GraIL-BM_WN18RR_v1``` all the classification metrics for a collection of thresholds, with the PR-AUC at the end of the file.
+Please run the script with the help option ```-h``` to access an exhaustive link of arguments and options. 
 
 ## Rule extraction
 
