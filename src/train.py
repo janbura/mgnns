@@ -213,11 +213,11 @@ if __name__ == "__main__":
     min_loss = None
     num_bad_iterations = 0
     # Maximum number of epochs reporting higher loss than lowest achieved before we stop early
-    max_num_bad = 50
+    max_num_bad = 100
 
     print("Training model {}.".format(args.model_name))
 
-    for epoch in range(3000):
+    for epoch in range(20000):
         loss = train()
         if min_loss is None: min_loss = loss
         if epoch % divisor == 0:
