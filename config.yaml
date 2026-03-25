@@ -1,0 +1,30 @@
+paths:
+  data_dir: ./data/fb237v1
+  exp_dir: ./experiments
+
+experiment:
+  type: link_prediction           # options: node_classification | link_prediction
+  # This should match the name of a folder in data_dir  
+  use_dummy_constants: true        # options: true | false
+  # Encoding scheme used during training
+  encoding_scheme: iclr22          # options: iclr22 | canonical
+  # Aggregation strategy for the GNN
+  aggregation: max-max             # options: max-max | max-sum | sum-max | sum-sum
+  # Model threshold 
+  derivation_threshold: 0.000000001
+  # Facts with a score under this threshold will be ignored for the purposes of explanation
+  non_negative_weights: true       # options: true | false
+  # Clamp small weights to 0 after each batch. Use 0 for no clamping.
+  clamping: 0 
+
+run:
+  # Whether to run the training phase
+  train: true        # options: true | false
+  # Whether to run the validation phase
+  valid: true        # options: true | false
+  # Whether to run the test phase
+  test: true # options: true | false
+  # Whether to generate explanations for predictions
+  explain: true # options: true | false
+  # Whether to attempt to minimise rule size
+  minimal_rule: false  # options: true | false
