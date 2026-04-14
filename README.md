@@ -118,7 +118,7 @@ python count_anyburl_rules_entailed_by_mgnn.py --rules ./AnyBURL/rules/GraIL-BM_
 The first time this command is run will throw an error because the ```--answers``` file is nonexistent. However, the script will store in the ```--queries``` file all facts entailed by the AnyBURL rules on the ``incomplete`` test graph S_I. One can then apply the MGNN to S_I using the queries file as a target dataset, and the resulting predictions must be stored in the ```--answers``` file. Then, the command can be run again to produce the number of rules captured by our system on the benchmark, which is printed on the console. The command used in this case for applying the MGNN to the queries and produce the answers, in between the two runs of the previous command, is:
 
 ```bash
-python test.py --dataset-name GraIL-BM_WN18RR_v1 --load-model-name GraIL-BM_WN18RR_v1_from-data_EC --encoding-scheme EC --test-data --test-graph ./data/GraIL-BM_WN18RR_v1/test/test-graph.txt --test-examples  ./rules/captured_in_dataset/GraIL-BM_WN18RR_v1/queries --print-entailed-facts ./rules/captured_in_dataset/GraIL-BM_WN18RR_v1/answers --get-scores
+python compute_metrics.py --dataset-name GraIL-BM_WN18RR_v1 --load-model-name GraIL-BM_WN18RR_v1_from-data_EC --encoding-scheme EC --test-data --test-graph ./data/GraIL-BM_WN18RR_v1/test/test-graph.txt --test-examples  ./rules/captured_in_dataset/GraIL-BM_WN18RR_v1/queries --print-entailed-facts ./rules/captured_in_dataset/GraIL-BM_WN18RR_v1/answers --get-scores
 ```
 
 # Evaluation

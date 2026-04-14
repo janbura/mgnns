@@ -1,4 +1,3 @@
-# config.py
 import yaml
 from enum import Enum
 from pathlib import Path
@@ -12,10 +11,8 @@ class ExperimentType(Enum):
     LINK_PREDICTION = "link_prediction"
 
 class AggregationType(Enum):
-    MAX_MAX = "max-max"
-    MAX_SUM = "max-sum"
-    SUM_MAX = "sum-max"
-    SUM_SUM = "sum-sum"
+    MAX = "max"
+    SUM = "sum"
 
 class ExperimentConfig:
 
@@ -27,8 +24,10 @@ class ExperimentConfig:
     experiment_type: ExperimentType
     # Encoding/decoding scheme (canonical or iclr22)
     encoding_scheme: EncoderType
-    # Aggregation functions
-    agg_function: AggregationType
+    # Aggregation functions for layer 1
+    agg_function_1: AggregationType
+    # Aggregation functions for layer 2
+    agg_function_2: AggregationType
     # Model threshold for derivation; must be between 0 and 1
     derivation_threshold: float
     # Use dummy nodes during training (this is a training optimisation that sometimes helps)
@@ -38,69 +37,65 @@ class ExperimentConfig:
     # Use only non-negative weights in the model's matrices.
     non_negative_weights: bool
 
-    # Which operations should be done in this experiment?
-    train: bool
-    valid: bool
-    test: bool
-    explain: bool
-    minimal_rule: bool
+    def get_exp_dir(self) -> Path:
+        return self.exp_dir
+
+    def get_data_dir(self) -> Path:
+        return self.data_dir
 
     def __init__(self, config_path: str):
 
         with open(config_path) as f:
             data = yaml.safe_load(f)
 
-        path = Path(data["paths"]["data_dir"])
-        if not path.exists():
-            raise ValueError(f"data folder does not exist: {data['paths']['data_dir']!r}")
-        if not path.is_dir():
-            raise ValueError(f"data path is not a folder: {data['paths']['data_dir']!r}")
-        self.data_dir = path
+        data_path = Path(data["data_dir"])
+        if not data_path.is_dir():
+            raise ValueError(f"data path is not an existing folder: {data_path}")
+        self.data_dir = data_path
 
-        path = Path(data["paths"]["exp_dir"])
-        if not path.exists():
-            raise ValueError(f"experiment folder does not exist: {data['paths']['exp_dir']!r}")
-        if not path.is_dir():
-            raise ValueError(f"experiment path is not a folder: {data['paths']['exp_dir']!r}")
-        self.exp_dir = path
+        exp_path = Path(data["exp_dir"])
+        if not exp_path.is_dir():
+            raise ValueError(f"experiment path is not an existing folder: {exp_path}")
+        self.exp_dir = exp_path
 
         try:
-            self.experiment_type = ExperimentType(data["experiment"]["type"])
+            self.experiment_type = ExperimentType(data["type"])
         except ValueError:
             valid = " or ".join(f'"{e.value}"' for e in ExperimentType)
             raise ValueError(f"experiment type not valid: please choose {valid}")
 
         try:
-            self.encoding_scheme = EncoderType(data["experiment"]["encoding_scheme"])
+            self.encoding_scheme = EncoderType(data["encoding_scheme"])
         except ValueError:
             valid = " or ".join(f'"{e.value}"' for e in EncoderType)
             raise ValueError(f"encoder type not valid: please choose {valid}")
 
         try:
-            self.agg_function = AggregationType(data["experiment"]["aggregation"])
+            self.agg_function_1 = AggregationType(data["aggregation_1"])
         except ValueError:
             valid = " or ".join(f'"{e.value}"' for e in AggregationType)
             raise ValueError(f"aggregation function not valid: please choose {valid}")
 
         try:
-            self.derivation_threshold = float(data["experiment"]["derivation_threshold"])
+            self.agg_function_2 = AggregationType(data["aggregation_2"])
         except ValueError:
-            raise ValueError(f"threshold value must be a float, got {data['experiment']['derivation_threshold']!r}")
+            valid = " or ".join(f'"{e.value}"' for e in AggregationType)
+            raise ValueError(f"aggregation function not valid: please choose {valid}")
+
+        try:
+            self.derivation_threshold = float(data["derivation_threshold"])
+        except ValueError:
+            raise ValueError(f"threshold value must be a float, got {data['derivation_threshold']!r}")
         if not 0 <= self.derivation_threshold <= 1:
             raise ValueError(f"threshold value must be between 0 and 1, got {self.derivation_threshold!r}")
 
         try:
-            self.clamping = float(data["experiment"]["clamping"])
+            self.clamping = float(data["clamping"])
         except ValueError:
-            raise ValueError(f"clamping value must be a float, got {data['experiment']['clamping']!r}")
+            raise ValueError(f"clamping value must be a float, got {data['clamping']!r}")
         if self.clamping < 0:
             raise ValueError(f"clamping value must be non-negative, got {self.clamping!r}")
 
-        self.use_dummies = data["experiment"]["use_dummy_constants"]
-        self.non_negative_weights = data["experiment"]["non_negative_weights"]
-        self.train = data["run"]["train"]
-        self.valid = data["run"]["valid"]
-        self.test = data["run"]["test"]
-        self.explain = data["run"]["explain"]
-        self.minimal_rule = data["run"]["minimal_rule"]
+        self.use_dummies = data["use_dummy_constants"]
+        self.non_negative_weights = data["non_negative_weights"]
 

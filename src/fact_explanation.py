@@ -6,103 +6,47 @@ import os.path
 import data_parser
 import nodes
 import datetime
+from config import ExperimentConfig, EncoderType
 
 from encoding_schemes import CanonicalEncoderDecoder, ICLREncoderDecoder
-from utils import type_pred
-from utils import remove_redundant_atoms
+from src.config import ExperimentConfig
+from utils import remove_redundant_atoms, type_pred, check
 
-
-from utils import load_predicates
-parser = argparse.ArgumentParser(description="Extract a rules captured by the MGNN which derives a given fact on"
-                                             "this dataset")
-
-parser.add_argument('--load-model-name',
-                    help='Name of the file with the trained model')
-parser.add_argument('--threshold',
-                    type=float,
-                    default=0.5,
-                    help='Classification threshold of the model')
-parser.add_argument('--dataset',
-                    nargs='?',
-                    default=None,
-                    help='Name of the file with the input dataset.')
-parser.add_argument('--predicates',
-                    help='Name of the file with the predicates of the signature ')
-parser.add_argument('--facts',
-                    help='Name of the file with the facts for which we seek an explanation')
-parser.add_argument('--output',
-                    help='Name of the file  where the extracted rules will be stored.',
-                    default=None)
-parser.add_argument('--canonical-encoder-file',
-                    help='File with the canonical encoder/decoder used to train the model.')
-parser.add_argument('--iclr22-encoder-file',
-                    default=None,
-                    help='File with the iclr22 encoder/decoder used to train the model, if it was used.')
-parser.add_argument('--encoding-scheme',
-                    default='canonical',
-                    nargs='?',
-                    choices=['iclr22', 'canonical'],
-                    help='Choose the encoder-decoder that will be applied to the data (canonical by default).')
-parser.add_argument('--minimal-rule',
-                    default=False,
-                    action='store_true')
-
-args = parser.parse_args()
-
-type_pred = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 
 # Optimised rule extraction algorithm: the hope is that the extracted rules are the shortest/strongest among the
 # explanatory rules, and so they are the ones that make most sense.
 # IMPORTANT NOTE: Currently supports only max aggregation.
-if __name__ == "__main__":
+def explain_facts(cfg: ExperimentConfig, input_graph, predictions, fl2, fl1, fl0, minimal, num_predictions=10):
 
-    print(datetime.datetime.now())
-
-    dataset_path = args.dataset
-    assert os.path.exists(dataset_path)
-    print("Loading graph data from {}".format(dataset_path))
-    dataset = data_parser.parse(dataset_path)
-
-    model_name = args.load_model_name[:-3] # Remove extension '.pt'
-
-    if args.encoding_scheme == 'canonical':
-        cd_dataset = dataset
+    if cfg.encoding_scheme == EncoderType.CANONICAL:
+        cd_dataset = input_graph
     else:
-        iclr_encoder_decoder = ICLREncoderDecoder(load_from_document=args.iclr22_encoder_file)
-        cd_dataset = iclr_encoder_decoder.encode_dataset(dataset)
-
-    can_encoder_decoder = CanonicalEncoderDecoder(load_from_document=args.canonical_encoder_file)
+        ep = cfg.get_exp_dir() / "encoders/iclr22_encoder.tsv"
+        check(ep,f"Error: ICLR encoding file not found: {ep}")
+        iclr_encoder_decoder = ICLREncoderDecoder(load_from_document=cfg.get_exp_dir() / "encoders/iclr22_encoder.tsv")
+        cd_dataset = iclr_encoder_decoder.encode_dataset(input_graph)
+    ep = cfg.exp_dir / 'encoders/canonical_encoder.tsv'
+    check(ep,f"Error: Canonical encoding file not found: {ep}")
+    can_encoder_decoder = CanonicalEncoderDecoder(ep)
 
     # gd stands for "graph dataset"
     (gd_features, node_to_gd_row_dict, gd_edge_list, gd_edge_colour_list) = can_encoder_decoder.encode_dataset(cd_dataset)
     gd_row_to_node_dict = {node_to_gd_row_dict[node]: node for node in node_to_gd_row_dict}
+
+    output_file = open(cfg.get_exp_dir() / "explanations.txt", 'w')
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    gd_data = Data(x=gd_features, edge_index=gd_edge_list, edge_type=gd_edge_colour_list).to(device)
-    model = torch.load(args.load_model_name, weights_only=False).to(device)
-    model.eval()
-    gnn_output_gd = model.all_labels(gd_data)
+    mp = cfg.exp_dir / "models/model.pt"
+    check(mp, f"Error: model file not found: {mp}")
+    model = torch.load(mp, weights_only=False).to(device)
 
-    if args.output is not None:
-        output_file = open(args.output, 'w')
+    n_explained = 0
+    for ent1, ent2, ent3 in predictions:
+        if n_explained >= num_predictions:
+            break
 
-    facts_path = args.facts
-    assert os.path.exists(facts_path), "No fact found in file {}".format(facts_path)
-    print("Loading dataset from {}".format(facts_path))
-    lines = open(facts_path, 'r').readlines()
-
-    num_read_lines = 0
-
-    for line in lines:
-        # Explain the first 10 facts
-        num_read_lines += 1
-        if num_read_lines > 10:
-            continue
-        if num_read_lines%10 == 0:
-            print(num_read_lines)
-
-        ent1, ent2, ent3 = line.split()
         fact = (ent1, ent2, ent3)
-        if args.encoding_scheme == 'canonical':
+        if cfg.encoding_scheme == EncoderType.CANONICAL:
             cd_fact = fact
         else:
             cd_fact = iclr_encoder_decoder.get_canonical_equivalent(fact)
@@ -113,8 +57,12 @@ if __name__ == "__main__":
         cd_fact_gd_row = node_to_gd_row_dict[cd_fact_node]
         cd_fact_pred_pos = can_encoder_decoder.unary_pred_position_dict[cd_fact_predicate]
 
+        gnn_output_gd = [fl2, fl1, fl0]
+
         # Sanity check: ensure the fact is a consequence of the model and the dataset
-        assert gnn_output_gd[L][cd_fact_gd_row][cd_fact_pred_pos] >= args.threshold, "Error: the fact to be explained is not derived by the model on this dataset."
+        assert gnn_output_gd[L][cd_fact_gd_row][cd_fact_pred_pos] >= cfg.derivation_threshold,\
+            "Error: the fact to be explained is not derived by the model on this dataset."
+
         rule_body = []
 
         # Compute simplified version of Gamma_i
@@ -194,7 +142,7 @@ if __name__ == "__main__":
                 gr_edge_list = torch.LongTensor(2, 0)
                 gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=torch.LongTensor([])).to(device)
                 gnn_output_gr = model(gr_dataset)
-                return gnn_output_gr[0][cd_fact_pred_pos] >= args.threshold
+                return gnn_output_gr[0][cd_fact_pred_pos] >= cfg.derivation_threshold
             else:
                 # Note that here variables are treated as constants. Thus, to recover the relevant node in
                 # the gr graph, we need to call nodes.const_node_dict[z], not nu_variable_to_node[z].
@@ -202,7 +150,7 @@ if __name__ == "__main__":
                 gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=gr_colour_list).to(device)
                 gnn_output_gr = model(gr_dataset)
                 a = gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_fact_pred_pos]
-                b = args.threshold
+                b = cfg.derivation_threshold
                 return a >= b
 
         # Sanity check: ensure Gamma_i suffices to derive the fact
@@ -221,8 +169,8 @@ if __name__ == "__main__":
         (gr_features, node_to_gr_row_dict, gr_edge_list, gr_colour_list) = can_encoder_decoder.encode_dataset(mini_dataset)
         gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=gr_colour_list).to(device)
         gnn_output_gr = model(gr_dataset)
-        assert gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_fact_pred_pos] >= args.threshold,\
-            "Bug: the base rule does not derive the fact from the dataset"
+        assert (gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_fact_pred_pos] >=
+                cfg.derivation_threshold), "Bug: the base rule does not derive the fact from the dataset"
 
 
         # BEST APPROXIMATION 1
@@ -435,7 +383,7 @@ if __name__ == "__main__":
         rule_body = []
         print("Length rule 1: {}".format(len(short_body_1)))
         print("Length rule 2: {}".format(len(short_body_2)))
-        if not args.minimal_rule:
+        if not minimal:
             if short_body_2 and len(short_body_2) < len(short_body_1):
                 print("Approximation 2 wins")
                 rule_body = short_body_2
@@ -484,7 +432,8 @@ if __name__ == "__main__":
                 (gr_features, node_to_gr_row_dict, gr_edge_list, gr_colour_list) = can_encoder_decoder.encode_dataset(conjunction)
                 gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=gr_colour_list).to(device)
                 gnn_output_gr = model(gr_dataset)
-                if gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_fact_pred_pos] >= args.threshold:
+                if (gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_fact_pred_pos] >=
+                        cfg.derivation_threshold):
                     frontier = None
                     rule_body = conjunction
                 else:
@@ -508,18 +457,20 @@ if __name__ == "__main__":
             gr_edge_list = torch.LongTensor(2, 0)
             gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=torch.LongTensor([])).to(device)
             gnn_output_gr = model(gr_dataset)
-            assert gnn_output_gr[0][cd_fact_pred_pos] >= args.threshold,\
+            assert gnn_output_gr[0][cd_fact_pred_pos] >= cfg.derivation_threshold,\
                 "ERROR: the extracted rule seems not to be captured by the model. This means there is a bug."
         else:
             (gr_features, node_to_gr_row_dict, gr_edge_list, gr_colour_list) = can_encoder_decoder.encode_dataset(rule_body)
             gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=gr_colour_list).to(device)
             gnn_output_gr = model(gr_dataset)
-            assert gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_fact_pred_pos] > args.threshold, \
+            assert (gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_fact_pred_pos] >
+                    cfg.derivation_threshold), \
                 "ERROR: the extracted rule seems not to be captured by the model. This means there is a bug."
 
         # Unfold extracted rules with the encoder's rules
-        if args.encoding_scheme == "iclr22":
-            rule_body, can_variable_to_data_variable, top_facts = iclr_encoder_decoder.unfold(rule_body, cd_fact_predicate)
+        if cfg.encoding_scheme == EncoderType.ICLR22:
+            (rule_body, can_variable_to_data_variable,
+             top_facts) = iclr_encoder_decoder.unfold(rule_body, cd_fact_predicate)
             # Process top_facts
             for pair in top_facts:
                 [y1, y2] = list(pair)
@@ -554,7 +505,7 @@ if __name__ == "__main__":
                 body_atoms.append("<{}>[?{}]".format(o, s))
             else:
                 body_atoms.append("<{}>[?{},?{}]".format(p, s, o))
-        if args.encoding_scheme == 'canonical':
+        if cfg.encoding_scheme == EncoderType.CANONICAL:
             head = "<{}>[?X1]".format(cd_fact_predicate)
         else:
             if iclr_encoder_decoder.data_predicate_to_arity[iclr_encoder_decoder.unary_canonical_to_input_predicate_dict[cd_fact_predicate]] == 1:
@@ -563,8 +514,7 @@ if __name__ == "__main__":
                 head = "<{}>[?X1,?X2]".format(iclr_encoder_decoder.unary_canonical_to_input_predicate_dict[cd_fact_predicate])
         rule = head + " :- " + ", ".join(body_atoms) + " .\n"
 
-        if args.output is not None:
-            output_file.write("{}\n".format(fact))
-            output_file.write(rule + '\n')
+        output_file.write("{}\n".format(fact))
+        output_file.write(rule + '\n')
 
     output_file.close()

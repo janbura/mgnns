@@ -17,6 +17,8 @@ import requests
 import re
 
 from tqdm import tqdm
+import os.path
+import sys
 
 # Code in this file for interfacing with RDFox is based off that found here: 
 # https://docs.oxfordsemantic.tech/getting-started.html
@@ -24,6 +26,22 @@ from tqdm import tqdm
 rdfox_server = "http://localhost:8080"
 type_pred = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 
+def check(path, error):
+    if not os.path.exists(path):
+        sys.exit(error)
+
+# Clamp to 0 values of a matrix with absolute value smaller or equal than a given threshold.
+# Use option negative_only to clamp only the negative values
+def threshold_matrix_values(matrix: torch.tensor, threshold: float, negative_only=False):
+    below_threshold_mask = matrix <= -threshold
+    above_threshold_mask = matrix >= threshold
+    if negative_only:
+        outside_threshold_mask = torch.logical_or(below_threshold_mask, matrix >= 0)
+    else:
+        outside_threshold_mask = torch.logical_or(below_threshold_mask, above_threshold_mask)
+    inside_threshold_mask = torch.logical_not(outside_threshold_mask)
+    matrix[inside_threshold_mask] = 0
+    return torch.sum(outside_threshold_mask == False), torch.numel(outside_threshold_mask)
 
 def assert_response_ok(response, message):
     '''Helper function to raise an exception if the REST endpoint returns an
