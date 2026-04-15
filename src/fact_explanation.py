@@ -12,25 +12,23 @@ from encoding_schemes import CanonicalEncoderDecoder, ICLREncoderDecoder
 from src.config import ExperimentConfig
 from utils import remove_redundant_atoms, type_pred, check
 
-
-# Optimised rule extraction algorithm: the hope is that the extracted rules are the shortest/strongest among the
-# explanatory rules, and so they are the ones that make most sense.
 # IMPORTANT NOTE: Currently supports only max aggregation.
 def explain_facts(cfg: ExperimentConfig, input_graph, predictions, fl2, fl1, fl0, minimal, num_predictions=10):
 
+    ed = cfg.get_exp_dir()
+
+    can_encoder_decoder = CanonicalEncoderDecoder(check(ed / 'canonical_encoder.tsv', "Canonical encoding"))
     if cfg.encoding_scheme == EncoderType.CANONICAL:
         cd_dataset = input_graph
-    else:
-        ep = cfg.get_exp_dir() / "encoders/iclr22_encoder.tsv"
-        check(ep,f"Error: ICLR encoding file not found: {ep}")
-        iclr_encoder_decoder = ICLREncoderDecoder(load_from_document=cfg.get_exp_dir() / "encoders/iclr22_encoder.tsv")
+    elif cfg.encoding_scheme == EncoderType.ICLR22:
+        iclr_encoder_decoder = ICLREncoderDecoder(check(ed / "iclr22_encoder.tsv", "ICLR encoding"))
         cd_dataset = iclr_encoder_decoder.encode_dataset(input_graph)
-    ep = cfg.exp_dir / 'encoders/canonical_encoder.tsv'
-    check(ep,f"Error: Canonical encoding file not found: {ep}")
-    can_encoder_decoder = CanonicalEncoderDecoder(ep)
+    else:
+        raise ValueError(f"Script does not support encoding scheme: {cfg.encoding_scheme}")
 
     # gd stands for "graph dataset"
-    (gd_features, node_to_gd_row_dict, gd_edge_list, gd_edge_colour_list) = can_encoder_decoder.encode_dataset(cd_dataset)
+    (gd_features, node_to_gd_row_dict, gd_edge_list, gd_edge_colour_list) = (
+        can_encoder_decoder.encode_dataset(cd_dataset))
     gd_row_to_node_dict = {node_to_gd_row_dict[node]: node for node in node_to_gd_row_dict}
 
     output_file = open(cfg.get_exp_dir() / "explanations.txt", 'w')

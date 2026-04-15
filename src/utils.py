@@ -26,9 +26,11 @@ import sys
 rdfox_server = "http://localhost:8080"
 type_pred = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 
-def check(path, error):
+def check(path, fileid):
     if not os.path.exists(path):
-        sys.exit(error)
+        sys.exit(f"ERROR: {fileid} file not found in {path}")
+    else:
+        return path
 
 # Clamp to 0 values of a matrix with absolute value smaller or equal than a given threshold.
 # Use option negative_only to clamp only the negative values
@@ -57,6 +59,7 @@ def load_predicates(predicates_file):
     binary_predicates = []
     unary_predicates = []
 
+    # IT IS CRITICAL TO RESPECT THE ORDER OF PREDICATES IN THE LIST!!
     try:
         with open(predicates_file, 'r') as f:
             for line in f:
@@ -126,6 +129,25 @@ def remove_redundant_atoms(rule_body):
                 new_rule_body.append((z, R, y))
                 frontier.append(z)
     return new_rule_body
+
+
+ # def threshold_matrix_values(matrix: torch.tensor, threshold: float, negative_only=False):
+    #     below_threshold_mask = matrix <= -threshold
+    #     above_threshold_mask = matrix >= threshold
+    #     if negative_only:
+    #         outside_threshold_mask = torch.logical_or(below_threshold_mask, matrix >= 0)
+    #     else:
+    #         outside_threshold_mask = torch.logical_or(below_threshold_mask, above_threshold_mask)
+    #     inside_threshold_mask = torch.logical_not(outside_threshold_mask)
+    #     matrix[inside_threshold_mask] = 0
+    #
+    # #Model clamping
+    # if args.model_clamping:
+    #     for layer in range(model.num_layers + 1):
+    #         mat = model.matrix_A(layer)
+    #         threshold_matrix_values(model.matrix_A(layer), float(args.model_clamping))
+    #         for colour in range(model.num_colours + 1):
+    #             threshold_matrix_values(model.matrix_B(layer, colour), float(args.model_clamping))
 
 
 

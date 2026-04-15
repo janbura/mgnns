@@ -224,6 +224,8 @@ class ICLREncoderDecoder:
     def canonical_binary_predicates(self):
         return self.binary_canonical.values()
 
+
+    # TODO: Check that encoding is deterministic. It is critical that the same dataset is encoded to the same nodes.
     def encode_dataset(self, dataset):
 
         encoded_dataset = []
