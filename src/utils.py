@@ -69,6 +69,8 @@ def load_predicates(predicates_file):
                     unary_predicates.append(pair[0])
                 else:
                     binary_predicates.append(pair[0])
+
+        # TODO: sanity check - no duplicates
         return binary_predicates, unary_predicates
 
     except FileNotFoundError:
@@ -149,5 +151,47 @@ def remove_redundant_atoms(rule_body):
     #         for colour in range(model.num_colours + 1):
     #             threshold_matrix_values(model.matrix_B(layer, colour), float(args.model_clamping))
 
-
-
+ #    # Auxiliary method - I think this is for one of the methods below?
+ #    def get_conjunction_for_contributor(var_y, pos_j):
+ #        conj = set()
+ #        conj.add((var_y, type_pred, can_encoder_decoder.position_unary_pred_dict[pos_j]))
+ #        vari = var_y
+ #        for cur_lay in range(1, L + 1, 1):
+ #            if (vari, cur_lay) in predecessors:
+ #                (new_vari, colr, _) = predecessors[(vari, cur_lay)]
+ #                conj.add((vari, can_encoder_decoder.colour_binary_pred_dict[colr], new_vari))
+ #                vari = new_vari
+ #        return conj
+ #
+ #    # Auxiliary method - I think this is also for one of the methods below
+ #    def test_gr_dataset(body):
+ #        if not body:
+ #            gr_features = torch.FloatTensor(np.zeros((1, model.layer_dimension(0))))
+ #            gr_edge_list = torch.LongTensor(2, 0)
+ #            gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=torch.LongTensor([])).to(device)
+ #            gnn_output_gr = model(gr_dataset)
+ #            return gnn_output_gr[0][cd_fact_pred_pos] >= cfg.derivation_threshold
+ #        else:
+ #            # Note that here variables are treated as constants. Thus, to recover the relevant node in
+ #            # the gr graph, we need to call nodes.const_node_dict[z], not nu_variable_to_node[z].
+ #            (gr_features, node_to_gr_row_dict, gr_edge_list, gr_colour_list) = can_encoder_decoder.encode_dataset(body)
+ #            gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=gr_colour_list).to(device)
+ #            gnn_output_gr = model(gr_dataset)
+ #            a = gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_fact_pred_pos]
+ #            b = cfg.derivation_threshold
+ #            return a >= b
+ #
+ #
+ # # Weight clamping. Note that this modifies the model.
+ #        if cfg.clamping > 0:
+ #            n_clamped_weights = 0
+ #            n_total_weights = 0
+ #            for layer in range(1, model.num_layers + 1):
+ #                a, b = threshold_matrix_values(model.matrix_A(layer), cfg.clamping)
+ #                n_clamped_weights += a
+ #                n_total_weights += b
+ #                for colour in range(model.num_colours):
+ #                    a, b = threshold_matrix_values(model.matrix_B(layer, colour), cfg.clamping)
+ #                    n_clamped_weights += a
+ #                    n_total_weights += b
+ #            print("Percentage of clamped weights: {}".format(n_clamped_weights / n_total_weights))

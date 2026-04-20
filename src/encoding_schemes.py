@@ -1,289 +1,220 @@
-import time
-
-import nodes
 import torch
-import numpy as np
+from utils import type_pred
+from bidict import bidict
+from cd_graph import CDGraph
+from collections import defaultdict
+import sys
+from abc import ACB, abstractmethod
 
-type_pred = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 ineq_pred = "owl:differentFrom"
 
 class CanonicalEncoderDecoder:
 
+    # If the signature lacks unary or binary predicates, we add dummies to the signature (but not use them in any facts)
+    DUMMY_PRED = "DUMMY_PRED"
+    DUMMY_COL = "DUMMY_COL"
+
     def __init__(self, load_from_document=None, unary_predicates=None, binary_predicates=None):
 
-        self.unary_pred_position_dict = {}
-        self.position_unary_pred_dict = {}
-        self.binary_pred_colour_dict = {}
-        self.colour_binary_pred_dict = {}
+        self.unary_pred_position_dict: bidict = bidict()
+        self.binary_pred_colour_dict: bidict = bidict()
 
         if load_from_document is not None:
+            # We trust the document!
             for line in open(load_from_document, 'r').readlines():
-                arity, num, pred = line.split()
+                arity, position, predicate = line.split()
                 if arity == "UNARY":
-                    self.unary_pred_position_dict[pred] = int(num)
-                    self.position_unary_pred_dict[int(num)] = pred
+                    self.unary_pred_position_dict[predicate] = int(position)
                 elif arity == "BINARY":
-                    self.binary_pred_colour_dict[pred] = int(num)
-                    self.colour_binary_pred_dict[int(num)] = pred
+                    self.binary_pred_colour_dict[predicate] = int(position)
                 else:
-                    print("ERROR: line not recognised, it will be skipped: {}".format(line))
-        elif unary_predicates is not None and binary_predicates is not None:
-            for i, pred in enumerate(unary_predicates):
-                self.unary_pred_position_dict[pred] = i
-                self.position_unary_pred_dict[i] = pred
-            for i, pred in enumerate(binary_predicates):
-                self.binary_pred_colour_dict[pred] = i
-                self.colour_binary_pred_dict[i] = pred
+                    sys.exit("ERROR: line not recognised: {}".format(line))
         else:
-            print("ERROR: no predicates found. Please provide lists of predicates or load encoder/decoder from file.")
-
-        self.colours = self.colour_binary_pred_dict.keys()
-        self.feature_dimension = len(self.position_unary_pred_dict)
+            for i, predicate in enumerate(unary_predicates):
+                self.unary_pred_position_dict[predicate] = i
+            if not self.unary_pred_position_dict:
+                self.unary_pred_position_dict[self.DUMMY_PRED] = 1
+            for i, predicate in enumerate(binary_predicates):
+                self.binary_pred_colour_dict[predicate] = i
+            if not self.binary_pred_colour_dict:
+                self.binary_pred_colour_dict[self.DUMMY_COL] = 1
 
     def save_to_file(self, target_file):
         output = open(target_file, 'w')
-        for i in self.position_unary_pred_dict:
-            output.write("{}\t{}\t{}\n".format("UNARY", i, self.position_unary_pred_dict[i]))
-        for i in self.colour_binary_pred_dict:
-            output.write("{}\t{}\t{}\n".format("BINARY", i, self.colour_binary_pred_dict[i]))
+        for i in self.unary_pred_position_dict.inverse:
+            output.write("{}\t{}\t{}\n".format("UNARY", i, self.unary_pred_position_dict.inverse[i]))
+        for i in self.binary_pred_colour_dict.inverse:
+            output.write("{}\t{}\t{}\n".format("BINARY", i, self.binary_pred_colour_dict.inverse[i]))
         output.close()
 
-    def encode_dataset(self, dataset, use_dummy_constants=False):
+    # Given a (col,d)-dataset, returns its resulting (col,d)-graph
+    def encode_dataset(self, dataset):
 
-        # Maps each node v_a in the graph to set of positions 1 <= i <= dim such that U_i(a) is in the dataset
-        # (value can be empty for some nodes!)
-        node_positions_dict = {}
-
-        # Maps each colour 'c' to the set of pairs of nodes v_a,v_b, such that Ec(a,b) is in the dataset
-        # (value never empty for any colour)
-        colour_nodepairs_dict = {}
+        nodename_feature_dict = defaultdict(lambda: torch.zeros(delta, dtype=torch.float))
+        edges = set()
+        delta = len(self.unary_pred_position_dict)
+        col_size = len(self.binary_pred_colour_dict)
 
         for RDF_triple in dataset:
+            # Fact of form C(a), written (a type C)
             if RDF_triple[1] == type_pred:
-                pred = RDF_triple[2]
-                position = self.unary_pred_position_dict[pred]
-                constant = RDF_triple[0]
-                if constant not in nodes.const_node_dict:
-                    nodes.add_node_for_constant(constant)
-                node = nodes.const_node_dict[constant]
-                if node not in node_positions_dict:
-                    node_positions_dict[node] = {position}
-                else:
-                    node_positions_dict[node].add(position)
+                if RDF_triple[2] not in self.unary_pred_position_dict:
+                    sys.exit(f"Predicate {RDF_triple[2]} not in the list of unary predicates recognised by this encoder.")
+                nodename_feature_dict[RDF_triple[0]][self.unary_pred_position_dict[RDF_triple[2]]] = 1
+            # Fact of form R(a,b), written (a R b)
             else:
-                pred = RDF_triple[1]
-                colour = self.binary_pred_colour_dict[pred]
-                origin_constant = RDF_triple[0]
-                if origin_constant not in nodes.const_node_dict:
-                    nodes.add_node_for_constant(origin_constant)
-                origin_node = nodes.const_node_dict[origin_constant]
-                if origin_node not in node_positions_dict:
-                    node_positions_dict[origin_node] = set()
-                destination_constant = RDF_triple[2]
-                if destination_constant not in nodes.const_node_dict:
-                    nodes.add_node_for_constant(destination_constant)
-                destination_node = nodes.const_node_dict[destination_constant]
-                if destination_node not in node_positions_dict:
-                    node_positions_dict[destination_node] = set()
-                if colour not in colour_nodepairs_dict:
-                    colour_nodepairs_dict[colour] = {(origin_node, destination_node)}
-                else:
-                    colour_nodepairs_dict[colour].add((origin_node, destination_node))
+                if RDF_triple[1] not in self.binary_pred_colour_dict:
+                    sys.exit(f"Predicate {RDF_triple[1]} not in the list of binary predicates recognised by this encoder.")
+                edges.add((RDF_triple[0], RDF_triple[2], RDF_triple[1]))
 
-        # Hugh's trick to penalise the model just learning to increase the biases for key facts.
-        if use_dummy_constants:
-            for c2 in self.colours:
-                special_constant_2 = '#{}'.format(c2)
-                node_for_sc2 = nodes.get_node_for_constant(special_constant_2)
-                node_positions_dict[node_for_sc2] = set()
-                for node in node_positions_dict:
-                    if nodes.node_const_dict[node].startswith('#'):
-                        if c2 not in colour_nodepairs_dict[c2]:
-                            colour_nodepairs_dict[c2] = {(node_for_sc2, node)}
-                        else:
-                            colour_nodepairs_dict[c2].add((node_for_sc2, node))
-                for c1 in self.colours:
-                    special_constant_1 = '#{}#{}'.format(c2, c1)
-                    node_for_sc1 = nodes.get_node_for_constant(special_constant_1)
-                    node_positions_dict[node_for_sc1] = set()
-                    if c1 not in colour_nodepairs_dict[c1]:
-                        colour_nodepairs_dict[c1] = {(node_for_sc1, node_for_sc2)}
-                    else:
-                        colour_nodepairs_dict[c1].add((node_for_sc1, node_for_sc2))
+        # Warning! The previous implementation introduced dummy constants here for ease of training.
+        # It was severely bugged. This has now been removed; any such step should be placed on ``train''
 
-
-        # For optimisation reasons, we store separately edges and colours, in edge_list and edge_colour_list, resp.
+        features = torch.FloatTensor(torch.stack(list(nodename_feature_dict.values())))
+        assert features.shape[1] == delta
+        node_names = list(nodename_feature_dict.keys()) # Correctness of this relies on dictionaries being ordered.
         edge_list = []
         edge_colour_list = []
-        for colour in self.colours:
-            if colour in colour_nodepairs_dict:
-                edge_list += list(colour_nodepairs_dict[colour])
-                edge_colour_list += [colour for _ in colour_nodepairs_dict[colour]]
+        for (oc, dc, pred) in edges:
+            edge_list.append([node_names.index(oc),node_names.index(dc)])
+            edge_colour_list.append(self.binary_pred_colour_dict[pred])
 
-        x = np.zeros((len(node_positions_dict), self.feature_dimension))
-        # NOTE: a node is NOT necessarily the same as the corresponding row in matrix x.
-        # This is important because the returned edges refer to rows of x and not to nodes.
-        return_nodes = {}
-        for i, node in enumerate(node_positions_dict.keys()):
-            return_nodes[node] = i
-            for position in node_positions_dict[node]:
-                x[i][position] = 1
-        x = torch.FloatTensor(x)
-        return_edge_list = []
-        for pair in edge_list:
-            i = return_nodes[pair[0]]
-            j = return_nodes[pair[1]]
-            return_edge_list += [[i, j]]
-        return_edge_list = torch.LongTensor(return_edge_list).t().contiguous()
-        return_edge_colour_list = torch.LongTensor(edge_colour_list)
-        if len(return_edge_list) == 0:
-            return_edge_list = torch.LongTensor([[], []])
+        return CDGraph(col_size=col_size, delta=len(self.unary_pred_position_dict),
+                       features=features, edges= torch.LongTensor(torch.LongTensor(edge_list).t().contiguous()),
+                       edge_colours=torch.LongTensor(edge_colour_list), node_names=node_names)
 
-        return x, return_nodes, return_edge_list, return_edge_colour_list
-
-    def decode_graph(self, node_row_dict, feature_vectors, threshold):
-
-        threshold_indices = torch.nonzero(feature_vectors > threshold)
-
-        row_node_dict = {}
-        for node in node_row_dict:
-            row_node_dict[node_row_dict[node]] = node
+    # Returns a dictionary where the keys are cd_facts and the values are their scores
+    def decode_graph(self, cd_graph: CDGraph, threshold):
 
         facts_scores_dict = {}
-
-        for index in threshold_indices:
-            index = index.tolist()
-            node = row_node_dict[index[0]]
-            position = index[1]
-            const = nodes.node_const_dict[node]
-            predicate = self.position_unary_pred_dict[position]
-            facts_scores_dict[(const, type_pred, predicate)] = feature_vectors[index[0]][index[1]].item()
+        for (i, j) in torch.nonzero(cd_graph.features > threshold):
+            facts_scores_dict[(cd_graph.node_names[i], type_pred, self.unary_pred_position_dict.inverse[j])] = (
+                cd_graph.features[i,j].item())
 
         return facts_scores_dict
 
+class NonCanonicalEncoder(ABC):
 
-# Encoder described in Section 3.1 of the KR23 paper. To represent functional terms more succintly, the decoder
-# supports only decoding of (col,d)-datasets whose terms have been produced by this encoder.
-class ICLREncoderDecoder:
+    canonical_unary_predicates = list
+    canonical_binary_predicates = list
+
+    @abstractmethod
+    def encode_dataset(self, dataset: set[tuple]) -> set[tuple]:
+        pass
+
+    @abstractmethod
+    def decode_dataset(self, dataset: set[tuple]) -> set[tuple]:
+        pass
+
+    @abstractmethod
+    def decode_fact(self, s: str, p:str, o:str) -> tuple[str, str, str]:
+        pass
+
+class IdentityEncoderDecoder(NonCanonicalEncoder):
+
+    def __init__(self, load_from_document=None, unary_predicates=None, binary_predicates=None):
+        self.canonical_binary_predicates = binary_predicates
+        self.canonical_unary_predicates = unary_predicates
+
+    def encode_dataset(self, dataset):
+        return dataset
+
+    def decode_dataset(self, dataset):
+        return dataset
+
+    def decode_fact(self, s, p, o):
+        return s, p, o
+
+
+class ICLREncoderDecoder(NonCanonicalEncoder):
 
     def __init__(self, load_from_document=None, unary_predicates=None, binary_predicates=None):
 
-        # important! there correspond to colours c1, c2, c3, c4 in the paper
-        self.binary_canonical = {1: "binary-pred-1", 2: "binary-pred-2", 3: "binary-pred-3", 4: "binary-pred-4"}
-        self.input_predicate_to_unary_canonical_dict = {}
-        self.unary_canonical_to_input_predicate_dict = {}
-        self.data_predicate_to_arity = {}
+        # Fresh predicates that correspond to colours c1, c2, c3, c4 in the paper
+        self.canonical_binary_predicates = ["binary-pred-1", "binary-pred-2", "binary-pred-3", "binary-pred-4"]
+        self.input_predicate_to_unary_canonical_dict = bidict
+        self.input_predicate_to_arity = {}
 
         if load_from_document is not None:
             for line in open(load_from_document, 'r').readlines():
-                data_pred, canonical_pred, arity = line.split()
-                self.input_predicate_to_unary_canonical_dict[data_pred] = canonical_pred
-                self.unary_canonical_to_input_predicate_dict[canonical_pred] = data_pred
-                self.data_predicate_to_arity[data_pred] = int(arity)
-        elif unary_predicates is not None and binary_predicates is not None:
-            self.unary_canonical_counter = 0
-            for pred in unary_predicates + binary_predicates:
-                if pred not in self.input_predicate_to_unary_canonical_dict:
-                    self.unary_canonical_counter += 1
-                    new_predicate = "unary-pred-{}".format(self.unary_canonical_counter)
-                    self.input_predicate_to_unary_canonical_dict[pred] = new_predicate
-                    self.unary_canonical_to_input_predicate_dict[new_predicate] = pred
-                    if pred in unary_predicates:
-                        self.data_predicate_to_arity[pred] = 1
-                    else:
-                        self.data_predicate_to_arity[pred] = 2
+                input_predicate, canonical_predicate, arity = line.split()
+                self.input_predicate_to_unary_canonical_dict[input_predicate] = canonical_predicate
+                self.input_predicate_to_arity[input_predicate] = int(arity)
         else:
-            print("ERROR: No predicates found. Please give lists of predicates or load encoder/decoder from a file.")
+            assert unary_predicates.isdisjoint(binary_predicates) # Sanity check
+            for pred in unary_predicates:
+                self.input_predicate_to_unary_canonical_dict[pred] = pred
+                self.input_predicate_to_arity[pred] = 1
+            for pred in binary_predicates:
+                self.input_predicate_to_unary_canonical_dict[pred] = "unary-for-{}".format(pred)
+                self.input_predicate_to_arity[pred] = 2
 
-        self.tuple_term_dict = {}
-        self.term_tuple_dict = {}
-        self.term_counter = 0
+        # Maps pairs of constants to a new single term
+        self.pair_term_dict = bidict
+        self.canonical_unary_predicates = list(self.input_predicate_to_unary_canonical_dict.inverse.keys())
 
+    # Save format (predicate \t new_predicate \t arity)
     def save_to_file(self, target_file):
         output = open(target_file, 'w')
-        for data_pred in self.input_predicate_to_unary_canonical_dict:
-            output.write("{}\t{}\t{}\n".format(data_pred,
-                                               self.input_predicate_to_unary_canonical_dict[data_pred],
-                                               self.data_predicate_to_arity[data_pred]))
+        for input_predicate in self.input_predicate_to_unary_canonical_dict:
+            output.write("{}\t{}\t{}\n".format(input_predicate,
+                                               self.input_predicate_to_unary_canonical_dict[input_predicate],
+                                               self.input_predicate_to_arity[input_predicate]))
         output.close()
 
-    def term_for_tuple(self, tup):
-        if tup not in self.tuple_term_dict:
-            self.term_counter += 1
-            new_term = "term-{}".format(self.term_counter)
-            self.tuple_term_dict[tup] = new_term
-            self.term_tuple_dict[new_term] = tup
-        return self.tuple_term_dict[tup]
+    def term_for_pair(self, pair):
+        if pair not in self.pair_term_dict:
+            self.pair_term_dict[pair] = "term-for-{}-{}".format(pair[0], pair[1])
+        return self.pair_term_dict[pair]
 
-    def exists_term_for(self, tup):
-        return tup in self.tuple_term_dict
-
-    def canonical_unary_predicates(self):
-        return self.unary_canonical_to_input_predicate_dict.keys()
-
-    def canonical_binary_predicates(self):
-        return self.binary_canonical.values()
-
-
-    # TODO: Check that encoding is deterministic. It is critical that the same dataset is encoded to the same nodes.
+    # Returns a new dataset over the new signature
     def encode_dataset(self, dataset):
-
         encoded_dataset = []
-
         for (s, p, o) in dataset:
             if p == type_pred:
-                pred = o
-                constant = s
-                encoded_dataset.append((self.term_for_tuple((constant,)),
-                                        type_pred,
-                                        self.input_predicate_to_unary_canonical_dict[pred]))
+                encoded_dataset.append((s, p, self.input_predicate_to_unary_canonical_dict[o]))
             else:
-                pred = p
-                origin_constant = s
-                destination_constant = o
-                a = self.term_for_tuple((origin_constant,))
-                b = self.term_for_tuple((destination_constant,))
-                ab = self.term_for_tuple((origin_constant, destination_constant))
-                ba = self.term_for_tuple((destination_constant, origin_constant))
-                encoded_dataset.append((ab, type_pred, self.input_predicate_to_unary_canonical_dict[pred]))
-                encoded_dataset.append((a, self.binary_canonical[1], ab))
-                encoded_dataset.append((ab, self.binary_canonical[1], a))
-                encoded_dataset.append((b, self.binary_canonical[1], ba))
-                encoded_dataset.append((ba, self.binary_canonical[1], b))
-                encoded_dataset.append((b, self.binary_canonical[2], ab))
-                encoded_dataset.append((ab, self.binary_canonical[2], b))
-                encoded_dataset.append((a, self.binary_canonical[2], ba))
-                encoded_dataset.append((ba, self.binary_canonical[2], a))
-                encoded_dataset.append((ab, self.binary_canonical[3], ba))
-                encoded_dataset.append((ba, self.binary_canonical[3], ab))
-                encoded_dataset.append((a, self.binary_canonical[4], b))
-                encoded_dataset.append((b, self.binary_canonical[4], a))
+                # The following are simply renames to the paper notation, to make the code easier to read and write
+                a = s
+                b = o
+                ab = self.term_for_pair((a, b))
+                ba = self.term_for_pair((b, a))
+                col1 = self.canonical_binary_predicates[0]
+                col2 = self.canonical_binary_predicates[1]
+                col3 = self.canonical_binary_predicates[2]
+                col4 = self.canonical_binary_predicates[3]
+                encoded_dataset.append((ab, type_pred, self.input_predicate_to_unary_canonical_dict[p]))
+                encoded_dataset.extend([(a, col1, ab), (ab, col1, a), (b, col1, ba), (ba, col1, b)])
+                encoded_dataset.extend([(b, col2, ab), (ab, col2, b), (a, col2, ba), (ba, col2, a)])
+                encoded_dataset.extend([(ab, col3, ba),(ba, col3, ab)])
+                encoded_dataset.append([(a, col4, b), (b, col4, a)])
         return encoded_dataset
 
     def get_canonical_equivalent(self, fact):
         (s, p, o) = fact
         if p == type_pred:
-            return self.term_for_tuple((s,)), type_pred, self.input_predicate_to_unary_canonical_dict[o]
+            return s, p, self.input_predicate_to_unary_canonical_dict[o]
         else:
-            ab = self.term_for_tuple((s, o))
+            ab = self.term_for_pair((s, o))
             return ab, type_pred, self.input_predicate_to_unary_canonical_dict[p]
 
+    def decode_dataset(self, canonical_dataset):
+        return {self.decode_fact(s, p, o) for s, p, o in canonical_dataset}
+
     def decode_fact(self, s, p, o):
+        # All facts in an encoded dataset are unary; binary facts should not be decoded.
         assert(p == type_pred)
-        tup = self.term_tuple_dict[s]
-        if len(tup) == 1:
-            a = tup[0]
-            return a, type_pred, self.unary_canonical_to_input_predicate_dict[o]
+        if s in self.pair_term_dict.values:
+            a, b = self.pair_term_dict.inverse[s]
+            return a, self.input_predicate_to_unary_canonical_dict.inverse[o], b
         else:
-            a = tup[0]
-            b = tup[1]
-            return a, self.unary_canonical_to_input_predicate_dict[o], b
+            # The node is a for a single constant.
+            return s, type_pred, self.input_predicate_to_unary_canonical_dict.inverse[o]
 
-    def get_data_predicate(self, canonical_predicate):
-        return self.unary_canonical_to_input_predicate_dict[canonical_predicate]
+    # Maps a canonical predicate to the arity of the original predicate, either 1 or 2
+    def original_arity(self, canonical_predicate):
+        return self.input_predicate_to_arity[self.input_predicate_to_unary_canonical_dict.inverse[canonical_predicate]]
 
-    def associated_arity(self, canonical_predicate):
-        return self.data_predicate_to_arity[self.get_data_predicate(canonical_predicate)]
 
     def unfold(self, rule_body, unary_head_predicate):
         # each variable in the canonical rule corresponds to a unary node,
@@ -295,7 +226,7 @@ class ICLREncoderDecoder:
         new_body = []
 
         # first, figure out the arity of the head variable, and assign corresponding variables in the data rule
-        if self.associated_arity(unary_head_predicate) == 1:
+        if self.original_arity(unary_head_predicate) == 1:
             can_variables_to_unfolded_variables["X1"] = ["X1"]
         else:
             can_variables_to_unfolded_variables["X1"] = ["X1", "X2"]
@@ -314,10 +245,10 @@ class ICLREncoderDecoder:
             for (s, p, o) in this_round:
                 if s in can_variables_to_unfolded_variables:
                     if p == type_pred:
-                        if self.associated_arity(o) == 1 and len(can_variables_to_unfolded_variables[s]) == 1:
+                        if self.original_arity(o) == 1 and len(can_variables_to_unfolded_variables[s]) == 1:
                             # Fact of the form A(x) in the data rule
                             new_body.append((can_variables_to_unfolded_variables[s], type_pred, self.get_data_predicate(o)))
-                        elif self.associated_arity(o) == 2 and len(can_variables_to_unfolded_variables[s]) == 2:
+                        elif self.original_arity(o) == 2 and len(can_variables_to_unfolded_variables[s]) == 2:
                             # Fact of the form R(x,y) in the data rule
                             new_body.append((can_variables_to_unfolded_variables[s][0], self.get_data_predicate(o), can_variables_to_unfolded_variables[s][1]))
                         else:

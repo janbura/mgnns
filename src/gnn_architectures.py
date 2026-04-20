@@ -74,7 +74,7 @@ class GNN(torch.nn.Module):
         # Layer 1
         x = self.lin_self_1(x) + self.conv1(x, edge_index, edge_colour)
         x = torch.relu(x)
-        features_1 = x.detach().clone()
+        features_1 = x.detach().clone() # Detached so that it does not participate in the computation graph
 
         # Layer 2
         x = self.lin_self_2(x) + self.conv2(x, edge_index, edge_colour)

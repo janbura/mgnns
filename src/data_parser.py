@@ -1,6 +1,5 @@
 import rdflib as rdf
 
-
 def parse_as_nt(file):
     dataset = []
     graph = rdf.Graph()
