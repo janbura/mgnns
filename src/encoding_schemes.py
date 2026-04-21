@@ -4,7 +4,7 @@ from bidict import bidict
 from cd_graph import CDGraph
 from collections import defaultdict
 import sys
-from abc import ACB, abstractmethod
+from abc import ABC, abstractmethod
 
 ineq_pred = "owl:differentFrom"
 
@@ -33,11 +33,11 @@ class CanonicalEncoderDecoder:
             for i, predicate in enumerate(unary_predicates):
                 self.unary_pred_position_dict[predicate] = i
             if not self.unary_pred_position_dict:
-                self.unary_pred_position_dict[self.DUMMY_PRED] = 1
+                self.unary_pred_position_dict[self.DUMMY_PRED] = 0
             for i, predicate in enumerate(binary_predicates):
                 self.binary_pred_colour_dict[predicate] = i
             if not self.binary_pred_colour_dict:
-                self.binary_pred_colour_dict[self.DUMMY_COL] = 1
+                self.binary_pred_colour_dict[self.DUMMY_COL] = 0
 
     def save_to_file(self, target_file):
         output = open(target_file, 'w')
@@ -56,19 +56,16 @@ class CanonicalEncoderDecoder:
         col_size = len(self.binary_pred_colour_dict)
 
         for RDF_triple in dataset:
-            # Fact of form C(a), written (a type C)
-            if RDF_triple[1] == type_pred:
+            if RDF_triple[1] == type_pred:  # Fact of form C(a), written (a type C)
                 if RDF_triple[2] not in self.unary_pred_position_dict:
                     sys.exit(f"Predicate {RDF_triple[2]} not in the list of unary predicates recognised by this encoder.")
                 nodename_feature_dict[RDF_triple[0]][self.unary_pred_position_dict[RDF_triple[2]]] = 1
-            # Fact of form R(a,b), written (a R b)
-            else:
+            else:  # Fact of form R(a,b), written (a R b)
                 if RDF_triple[1] not in self.binary_pred_colour_dict:
                     sys.exit(f"Predicate {RDF_triple[1]} not in the list of binary predicates recognised by this encoder.")
+                nodename_feature_dict[RDF_triple[0]] = torch.zeros(delta, dtype=torch.float)
+                nodename_feature_dict[RDF_triple[2]] = torch.zeros(delta, dtype=torch.float)
                 edges.add((RDF_triple[0], RDF_triple[2], RDF_triple[1]))
-
-        # Warning! The previous implementation introduced dummy constants here for ease of training.
-        # It was severely bugged. This has now been removed; any such step should be placed on ``train''
 
         features = torch.FloatTensor(torch.stack(list(nodename_feature_dict.values())))
         assert features.shape[1] == delta
@@ -87,7 +84,7 @@ class CanonicalEncoderDecoder:
     def decode_graph(self, cd_graph: CDGraph, threshold):
 
         facts_scores_dict = {}
-        for (i, j) in torch.nonzero(cd_graph.features > threshold):
+        for i, j in torch.nonzero(cd_graph.features > threshold).tolist():
             facts_scores_dict[(cd_graph.node_names[i], type_pred, self.unary_pred_position_dict.inverse[j])] = (
                 cd_graph.features[i,j].item())
 
@@ -99,7 +96,7 @@ class NonCanonicalEncoder(ABC):
     canonical_binary_predicates = list
 
     @abstractmethod
-    def encode_dataset(self, dataset: set[tuple]) -> set[tuple]:
+    def encode_dataset(self, dataset: set[tuple], **kwargs) -> set[tuple]:
         pass
 
     @abstractmethod
@@ -113,10 +110,21 @@ class NonCanonicalEncoder(ABC):
 class IdentityEncoderDecoder(NonCanonicalEncoder):
 
     def __init__(self, load_from_document=None, unary_predicates=None, binary_predicates=None):
-        self.canonical_binary_predicates = binary_predicates
-        self.canonical_unary_predicates = unary_predicates
+        self.canonical_unary_predicates = []
+        self.canonical_binary_predicates = []
+        if load_from_document is not None:
+            for line in open(load_from_document, 'r').readlines():
+                predicate, _, arity = line.split() # predicates are duplicate so we ignore the second
+                arity = int(arity)
+                if arity == 1:
+                    self.canonical_unary_predicates.append(predicate)
+                else:
+                    self.canonical_binary_predicates.append(predicate)
+        else:
+            self.canonical_binary_predicates = binary_predicates
+            self.canonical_unary_predicates = unary_predicates
 
-    def encode_dataset(self, dataset):
+    def encode_dataset(self, dataset, **kwargs):
         return dataset
 
     def decode_dataset(self, dataset):
@@ -125,6 +133,15 @@ class IdentityEncoderDecoder(NonCanonicalEncoder):
     def decode_fact(self, s, p, o):
         return s, p, o
 
+    # Save format (predicate \t new_predicate \t arity)
+    def save_to_file(self, target_file):
+        output = open(target_file, 'w')
+        for predicate in self.canonical_unary_predicates:
+            output.write("{}\t{}\t{}\n".format(predicate, predicate, 1))
+        for predicate in self.canonical_binary_predicates:
+            output.write("{}\t{}\t{}\n".format(predicate, predicate, 2))
+        output.close()
+
 
 class ICLREncoderDecoder(NonCanonicalEncoder):
 
@@ -132,7 +149,8 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
 
         # Fresh predicates that correspond to colours c1, c2, c3, c4 in the paper
         self.canonical_binary_predicates = ["binary-pred-1", "binary-pred-2", "binary-pred-3", "binary-pred-4"]
-        self.input_predicate_to_unary_canonical_dict = bidict
+
+        self.input_predicate_to_unary_canonical_dict = bidict()
         self.input_predicate_to_arity = {}
 
         if load_from_document is not None:
@@ -141,7 +159,7 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
                 self.input_predicate_to_unary_canonical_dict[input_predicate] = canonical_predicate
                 self.input_predicate_to_arity[input_predicate] = int(arity)
         else:
-            assert unary_predicates.isdisjoint(binary_predicates) # Sanity check
+            assert set(unary_predicates).isdisjoint(set(binary_predicates)) # Sanity check
             for pred in unary_predicates:
                 self.input_predicate_to_unary_canonical_dict[pred] = pred
                 self.input_predicate_to_arity[pred] = 1
@@ -150,7 +168,7 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
                 self.input_predicate_to_arity[pred] = 2
 
         # Maps pairs of constants to a new single term
-        self.pair_term_dict = bidict
+        self.pair_term_dict = bidict()
         self.canonical_unary_predicates = list(self.input_predicate_to_unary_canonical_dict.inverse.keys())
 
     # Save format (predicate \t new_predicate \t arity)
@@ -168,9 +186,13 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
         return self.pair_term_dict[pair]
 
     # Returns a new dataset over the new signature
-    def encode_dataset(self, dataset):
+    def encode_dataset(self, dataset, use_dummy_constants=False):
         encoded_dataset = []
-        for (s, p, o) in dataset:
+        col1 = self.canonical_binary_predicates[0] # Abbreviations to make the code match the paper notation
+        col2 = self.canonical_binary_predicates[1]
+        col3 = self.canonical_binary_predicates[2]
+        col4 = self.canonical_binary_predicates[3]
+        for s, p, o in dataset:
             if p == type_pred:
                 encoded_dataset.append((s, p, self.input_predicate_to_unary_canonical_dict[o]))
             else:
@@ -179,15 +201,28 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
                 b = o
                 ab = self.term_for_pair((a, b))
                 ba = self.term_for_pair((b, a))
-                col1 = self.canonical_binary_predicates[0]
-                col2 = self.canonical_binary_predicates[1]
-                col3 = self.canonical_binary_predicates[2]
-                col4 = self.canonical_binary_predicates[3]
                 encoded_dataset.append((ab, type_pred, self.input_predicate_to_unary_canonical_dict[p]))
                 encoded_dataset.extend([(a, col1, ab), (ab, col1, a), (b, col1, ba), (ba, col1, b)])
                 encoded_dataset.extend([(b, col2, ab), (ab, col2, b), (a, col2, ba), (ba, col2, a)])
                 encoded_dataset.extend([(ab, col3, ba),(ba, col3, ab)])
-                encoded_dataset.append([(a, col4, b), (b, col4, a)])
+                encoded_dataset.extend([(a, col4, b), (b, col4, a)])
+
+        if use_dummy_constants:
+            # Extract all constants from encoded_dataset. Less efficient than doing it on-the-fly, but it's cleaner code
+            constants = set()
+            for s, p, o in encoded_dataset:
+                constants.add(s)
+                if p != type_pred:
+                    constants.add(o)
+            for a in ['#', '##']:
+                for b in constants:
+                    ab = self.term_for_pair((a, b))
+                    ba = self.term_for_pair((b, a))
+                    encoded_dataset.extend([(a, col1, ab), (ab, col1, a), (b, col1, ba), (ba, col1, b)])
+                    encoded_dataset.extend([(b, col2, ab), (ab, col2, b), (a, col2, ba), (ba, col2, a)])
+                    encoded_dataset.extend([(ab, col3, ba), (ba, col3, ab)])
+                    encoded_dataset.extend([(a, col4, b), (b, col4, a)])
+
         return encoded_dataset
 
     def get_canonical_equivalent(self, fact):
@@ -204,7 +239,7 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
     def decode_fact(self, s, p, o):
         # All facts in an encoded dataset are unary; binary facts should not be decoded.
         assert(p == type_pred)
-        if s in self.pair_term_dict.values:
+        if s in self.pair_term_dict.values():
             a, b = self.pair_term_dict.inverse[s]
             return a, self.input_predicate_to_unary_canonical_dict.inverse[o], b
         else:

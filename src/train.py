@@ -8,16 +8,14 @@ import torch
 from torch_geometric.data import Data, DataLoader
 import os.path
 from encoding_schemes import CanonicalEncoderDecoder
-from config import ExperimentConfig,
-from src.encoding_schemes import NonCanonicalEncoder
+from config import ExperimentConfig
 from cd_graph import CDGraph
-from utils.convert_examples_from_rgcn_format import type_pred
+from utils import type_pred
 
 
 def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecoder, model,
           cd_graph: CDGraph, train_examples) :
 
-    dd = cfg.get_data_dir()
     ed = cfg.get_exp_dir()
 
     train_y = torch.zeros_like(cd_graph.features)
@@ -41,8 +39,8 @@ def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecod
     train_loader = DataLoader(dataset=[train_data.to(device)], batch_size=1)
 
     # Select Adam as the optimisation algorithm
-    # optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
 
     checkpoints_folder = ed / "checkpoints"
     if not os.path.exists(checkpoints_folder):
@@ -76,14 +74,15 @@ def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecod
             label = y.to(device)
             lossFunc = torch.nn.BCELoss(reduction='none')
             # Compute loss matrix, to be reduced later
-            loss = lossFunc(output[:,0], label[:,0])
+            loss = lossFunc(output, label)
             # Double check we're not getting NaNs
             assert(not (loss != loss).any())
             # We give different weight to positive and negative examples; we construct a weight matrix with weight of
             # 5.0 wherever there is a 1 output in the y vector and a 1.0 where there is a 0 (previously 0.5/5 or 0.1/10)
-            weight = torch.tensor([1.0, 5.0]).to(device)
+            # weight = torch.tensor([1.0, 5.0]).to(device)
+            weight = torch.tensor([0.5, 5.0]).to(device)
             weight_ = weight[y.data.long()].view_as(y)
-            loss = loss * weight_[:,0]
+            loss = loss * weight_
             # Use sum reduction on loss, backpropagate
             loss.sum().backward()
             optimizer.step()
@@ -101,7 +100,7 @@ def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecod
     # only achieving higher losses than the lowest one recorded, then stop early.
     min_loss = None
     num_bad_iterations = 0
-    max_num_bad = 1000
+    max_num_bad = 50
 
     print("Training model")
     # Train for a maximum of 20000 epochs, but expect to stop early

@@ -1,4 +1,5 @@
 import rdflib as rdf
+from pathlib import Path
 
 def parse_as_nt(file):
     dataset = []
@@ -19,10 +20,10 @@ def parse_as_tsv(file):
     return dataset
 
 
-def parse(file):
-    if file.endswith('.nt'):
+def parse(file: Path):
+    if file.suffix == '.nt':
         return parse_as_nt(file)
-    elif file.endswith('.tsv'):
+    elif file.suffix == '.tsv':
         return parse_as_tsv(file)
     else:
         print("Error, data format not supported. Use .nt or .tsv")

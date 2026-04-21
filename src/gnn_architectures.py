@@ -25,8 +25,8 @@ class EC_GCNConv(MessagePassing):
     # out_channels (int) - Size of each output sample
     def __init__(self, in_channels, out_channels, edge_colours, aggregation):
 
-        self.aggregation = aggregation
-        super(EC_GCNConv, self).__init__(aggr=self.aggregation)
+        self.aggr = aggregation
+        super(EC_GCNConv, self).__init__()
         self.weights = Parameter(torch.Tensor(edge_colours, out_channels, in_channels))
         self.weights.data.normal_(0, 0.001)
         self.in_channels = in_channels

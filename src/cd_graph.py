@@ -16,9 +16,9 @@ class CDGraph:
         assert delta > 0
         assert features.shape[0] == len(node_names)
         assert features.shape[1] == delta
-        assert edges.shape[0] == edge_colours.shape[0]
-        assert edges.shape[1] == 2
-        assert all(colour in col_size for colour in edge_colours)
+        assert edges.shape[1] == edge_colours.shape[0]
+        assert edges.shape[0] == 2
+        assert all(colour in range(col_size) for colour in edge_colours)
         assert len(node_names) == len(set(node_names))
 
         self.col_size = col_size

@@ -6,6 +6,7 @@
 import csv
 import time
 import torch
+from pathlib import Path
 from torch_geometric.data import Data
 
 import numpy as np
@@ -26,7 +27,7 @@ import sys
 rdfox_server = "http://localhost:8080"
 type_pred = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 
-def check(path, fileid):
+def check(path: Path, fileid):
     if not os.path.exists(path):
         sys.exit(f"ERROR: {fileid} file not found in {path}")
     else:

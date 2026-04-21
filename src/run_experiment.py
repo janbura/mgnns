@@ -3,9 +3,10 @@ from torch_geometric.data import Data, DataLoader
 import argparse
 import data_parser
 from encoding_schemes import CanonicalEncoderDecoder, ICLREncoderDecoder, IdentityEncoderDecoder
-from config import ExperimentConfig, EncoderType
+from config import EncoderType
 from utils import check, load_predicates
 from train import train
+from config import ExperimentConfig
 from compute_metrics import compute_metrics
 from fact_explanation import FactExplainer
 from gnn_architectures import GNN
@@ -20,7 +21,7 @@ parser.add_argument( "--minimal", action="store_true", help="Minimise explanator
 if __name__ == "__main__":
 
     args = parser.parse_args()
-    cfg = check(args.config_file, "Configuration")
+    cfg = ExperimentConfig(check(args.config_file, "Configuration"))
     dd = cfg.get_data_dir()
     ed = cfg.get_exp_dir()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -42,7 +43,7 @@ if __name__ == "__main__":
                                   cd_graph.edge_colours, cd_graph.node_names)
         cd_facts_scores_dict = internal_encoder.decode_graph(output_cd_graph, cfg.derivation_threshold)
         facts_scores_dict = {}  # a dictionary mapping triples (s,p,o) to a value (in str) score
-        for (s, p, o), score in cd_facts_scores_dict:
+        for (s, p, o), score in cd_facts_scores_dict.items():
             ss, pp, oo = external_encoder.decode_fact(s, p, o)
             facts_scores_dict[(ss, pp, oo)] = cd_facts_scores_dict[(s, p, o)]
 
@@ -64,16 +65,17 @@ if __name__ == "__main__":
 
         return facts_scores_dict, features_layer_2, features_layer_1, features_layer_0
 
-
-    print("Training...")
-    if args.skip_train: # Load encoder and model from file
+    # Training (or Model Loading)
+    if args.skip_train:
+        print("Loading encoder and model from file...")
         internal_encoder = CanonicalEncoderDecoder(check(ed / 'internal_encoder.tsv', "Internal encoding"))
-        if cfg.encoding_scheme == ICLREncoderDecoder:
+        if cfg.encoding_scheme == EncoderType.ICLR22:
             external_encoder = ICLREncoderDecoder(check(ed / 'external_encoder.tsv', "External encoding"))
         else:
             external_encoder = IdentityEncoderDecoder(check(ed / 'external_encoder.tsv', "External encoding"))
         model = torch.load(check(ed / "model.pt", "Model"), weights_only=False).to(device)
     else:
+        print("Training...")
         # Encoder-decoder set-up
         # We use the paper's non-canonical encoding framework. Given input dataset,
         # --we first apply an external encoding to produce a cd_dataset (cd stands for (col,delta)),
@@ -89,20 +91,19 @@ if __name__ == "__main__":
                                                       binary_predicates=data_binary_predicates)
         external_encoder.save_to_file(ed / 'external_encoder.tsv')
         internal_encoder = CanonicalEncoderDecoder(load_from_document=None,
-                                                   unary_predicates=external_encoder.canonical_unary_predicates(),
-                                                   binary_predicates=external_encoder.canonical_binary_predicates())
+                                                   unary_predicates=external_encoder.canonical_unary_predicates,
+                                                   binary_predicates=external_encoder.canonical_binary_predicates)
         internal_encoder.save_to_file(ed / 'internal_encoder.tsv')
 
         graph_dataset = data_parser.parse(check(dd / "train_graph.tsv", "Training Graph"))
         # TODO: sanity check - warn if the dataset contains any predicates out of the signature.
-        cd_dataset = external_encoder.encode_dataset(graph_dataset)
+        cd_dataset = external_encoder.encode_dataset(graph_dataset, use_dummy_constants=cfg.use_dummies)
         cd_graph = internal_encoder.encode_dataset(cd_dataset)
 
-        train_examples = check(dd / "train_examples.tsv)", "Training positive examples")
-        cd_train_examples = external_encoder.encode_dataset(train_examples)
+        train_examples_dataset = data_parser.parse(check(dd / "train_pos.tsv", "Training positive examples"))
+        cd_train_examples = external_encoder.encode_dataset(train_examples_dataset)
 
-        model = GNN(feature_dimension=len(external_encoder.canonical_unary_predicates()),
-                    num_edge_colours=len(external_encoder.canonical_binary_predicates),
+        model = GNN(feature_dimension=cd_graph.delta,num_edge_colours=cd_graph.col_size,
                     aggregation_1=cfg.agg_function_1, aggregation_2=cfg.agg_function_2).to(device)
 
         # TODO: try this: use a non-uniform encoding where much like in the code of the original ICLR paper, we encode
@@ -112,17 +113,25 @@ if __name__ == "__main__":
 
     # Validation
     print("Validating...")
-    predictions, _, _, _ = apply_model(dd / "valid_graph.tsv") # Ignore activations, don't save.
+    valid_graph_dataset = data_parser.parse(check(dd / "valid_graph.tsv", "Validation graph"))
+    valid_graph_cd_dataset = external_encoder.encode_dataset(valid_graph_dataset)
+    valid_cd_graph = internal_encoder.encode_dataset(valid_graph_cd_dataset)
+
+    predictions, _, _, _ = apply_model(valid_cd_graph)   # Ignore activations, don't save.
     compute_metrics(predictions, dd/"valid_pos.tsv", dd/"valid_neg.tsv", ed/"valid_metrics.txt")
     # TODO: print_best_threshold
 
     # Test (saves predictions for manual exam)
     print("Testing...")
-    predictions, fl2, fl1, fl0 = apply_model(dd /"test_graph.tsv", save_run=True)
+    test_graph_dataset = data_parser.parse(check(dd / "test_graph.tsv", "Test graph"))
+    test_graph_cd_dataset = external_encoder.encode_dataset(test_graph_dataset)
+    test_cd_graph = internal_encoder.encode_dataset(test_graph_cd_dataset)
+
+    predictions, fl2, fl1, fl0 = apply_model(test_cd_graph, save_run=True)
     compute_metrics(predictions, dd/"test_pos.tsv", dd/"test_neg.tsv", ed/"test_metrics.txt")
 
     # Explain
     print("Computing prediction explanations...")
-    # explainer = FactExplainer(exp_config, dd /"test_graph.tsv", predictions, (fl2, fl1, fl0), minimal=args.minimal_rule)
+    # explainer = FactExplainer(cfg, dd /"test_graph.tsv", predictions, (fl2, fl1, fl0), minimal=args.minimal_rule)
 
 
