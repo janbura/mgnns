@@ -6,10 +6,6 @@ class EncoderType(Enum):
     CANONICAL = "canonical"
     ICLR22 = "iclr22"
 
-class ExperimentType(Enum):
-    NODE_CLASSIFICATION = "node_classification"
-    LINK_PREDICTION = "link_prediction"
-
 class AggregationType(Enum):
     MAX = "max"
     SUM = "sum"
@@ -20,8 +16,6 @@ class ExperimentConfig:
     data_dir: Path
     # Folder where you store the experiment folders
     exp_dir: Path
-    # Type of experiment (node classification or link prediction)
-    experiment_type: ExperimentType
     # Encoding/decoding scheme (canonical or iclr22)
     encoding_scheme: EncoderType
     # Aggregation functions for layer 1
@@ -57,12 +51,6 @@ class ExperimentConfig:
         if not exp_path.is_dir():
             raise ValueError(f"experiment path is not an existing folder: {exp_path}")
         self.exp_dir = exp_path
-
-        try:
-            self.experiment_type = ExperimentType(data["type"])
-        except ValueError:
-            valid = " or ".join(f'"{e.value}"' for e in ExperimentType)
-            raise ValueError(f"experiment type not valid: please choose {valid}")
 
         try:
             self.encoding_scheme = EncoderType(data["encoding_scheme"])

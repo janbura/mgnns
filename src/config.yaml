@@ -1,6 +1,5 @@
 data_dir: /Users/unac116/Documents/GitHub/mgnns/data/link_prediction/WN18RRv1
 exp_dir:  /Users/unac116/Documents/GitHub/mgnns/experiments
-type: link_prediction           # options: node_classification | link_prediction
 use_dummy_constants: false   # options: true | false
 encoding_scheme: iclr22  # options: iclr22 | canonical
 aggregation_1: max             # options: max | sum 
