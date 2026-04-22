@@ -18,7 +18,7 @@ class ExperimentConfig:
 
     # Folder with the specific dataset
     data_dir: Path
-    # Folder with all the experiment configuration and results
+    # Folder where you store the experiment folders
     exp_dir: Path
     # Type of experiment (node classification or link prediction)
     experiment_type: ExperimentType

@@ -11,6 +11,9 @@ from compute_metrics import compute_metrics
 from fact_explanation import FactExplainer
 from gnn_architectures import GNN
 from cd_graph import CDGraph
+from datetime import datetime
+from pathlib import Path
+import shutil
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config-file', help='Path of the configuration file that controls the experiment.')
@@ -21,9 +24,13 @@ parser.add_argument( "--minimal", action="store_true", help="Minimise explanator
 if __name__ == "__main__":
 
     args = parser.parse_args()
+
     cfg = ExperimentConfig(check(args.config_file, "Configuration"))
-    dd = cfg.get_data_dir()
-    ed = cfg.get_exp_dir()
+    dd = cfg.get_data_dir() # useful abbreviation
+    ef = cfg.get_exp_dir() / f"{dd.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    ef.mkdir(parents=True, exist_ok=True)
+    shutil.copy(args.config_file, ef)
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # Reusable function to apply the model to a given cd-graph, returning a prediction dictionary (in the input data
@@ -48,8 +55,8 @@ if __name__ == "__main__":
             facts_scores_dict[(ss, pp, oo)] = cd_facts_scores_dict[(s, p, o)]
 
         if save_run:
-            derivations_file = ed / "predicted_triples.tsv"
-            derivations_file_scored = ed / "predicted_triples_scored.tsv"
+            derivations_file = ef / "predicted_triples.tsv"
+            derivations_file_scored = ef / "predicted_triples_scored.tsv"
             # Print from the fact with the highest score to that with the least
             to_print = []
             for (s, p, o) in facts_scores_dict:
@@ -68,12 +75,12 @@ if __name__ == "__main__":
     # Training (or Model Loading)
     if args.skip_train:
         print("Loading encoder and model from file...")
-        internal_encoder = CanonicalEncoderDecoder(check(ed / 'internal_encoder.tsv', "Internal encoding"))
+        internal_encoder = CanonicalEncoderDecoder(check(ef / 'internal_encoder.tsv', "Internal encoding"))
         if cfg.encoding_scheme == EncoderType.ICLR22:
-            external_encoder = ICLREncoderDecoder(check(ed / 'external_encoder.tsv', "External encoding"))
+            external_encoder = ICLREncoderDecoder(check(ef / 'external_encoder.tsv', "External encoding"))
         else:
-            external_encoder = IdentityEncoderDecoder(check(ed / 'external_encoder.tsv', "External encoding"))
-        model = torch.load(check(ed / "model.pt", "Model"), weights_only=False).to(device)
+            external_encoder = IdentityEncoderDecoder(check(ef / 'external_encoder.tsv', "External encoding"))
+        model = torch.load(check(ef / "model.pt", "Model"), weights_only=False).to(device)
     else:
         print("Training...")
         # Encoder-decoder set-up
@@ -82,25 +89,25 @@ if __name__ == "__main__":
         # --we then apply an internal encoding (always the canonical encoding) to produce a cd_graph
         # The decoding works in the reverse: internal decoding first, then external.
         # The default external decoding is an "identity" external decoding that behaves as the identity
-        data_binary_predicates, data_unary_predicates = load_predicates(check(dd / "predicates.csv", "Predicates"))
+        data_binary_predicates, data_unary_predicates = load_predicates(check(dd/ "predicates.csv", "Predicates"))
         if cfg.encoding_scheme == EncoderType.ICLR22:
             external_encoder = ICLREncoderDecoder(load_from_document=None, unary_predicates=data_unary_predicates,
                                                   binary_predicates=data_binary_predicates)
         else:
             external_encoder = IdentityEncoderDecoder(load_from_document=None, unary_predicates=data_unary_predicates,
                                                       binary_predicates=data_binary_predicates)
-        external_encoder.save_to_file(ed / 'external_encoder.tsv')
+        external_encoder.save_to_file(ef / 'external_encoder.tsv')
         internal_encoder = CanonicalEncoderDecoder(load_from_document=None,
                                                    unary_predicates=external_encoder.canonical_unary_predicates,
                                                    binary_predicates=external_encoder.canonical_binary_predicates)
-        internal_encoder.save_to_file(ed / 'internal_encoder.tsv')
+        internal_encoder.save_to_file(ef / 'internal_encoder.tsv')
 
         graph_dataset = data_parser.parse(check(dd / "train_graph.tsv", "Training Graph"))
         # TODO: sanity check - warn if the dataset contains any predicates out of the signature.
         cd_dataset = external_encoder.encode_dataset(graph_dataset, use_dummy_constants=cfg.use_dummies)
         cd_graph = internal_encoder.encode_dataset(cd_dataset)
 
-        train_examples_dataset = data_parser.parse(check(dd / "train_pos.tsv", "Training positive examples"))
+        train_examples_dataset = data_parser.parse(check(dd/ "train_pos.tsv", "Training positive examples"))
         cd_train_examples = external_encoder.encode_dataset(train_examples_dataset)
 
         model = GNN(feature_dimension=cd_graph.delta,num_edge_colours=cd_graph.col_size,
@@ -109,7 +116,7 @@ if __name__ == "__main__":
         # TODO: try this: use a non-uniform encoding where much like in the code of the original ICLR paper, we encode
         #  the query facts into the cd_graph that we use. This is expressive enough to support transitivity
         train(cfg=cfg, device=device, internal_encoder=internal_encoder, model=model, cd_graph=cd_graph,
-              train_examples=cd_train_examples)
+              train_examples=cd_train_examples, experiment_folder=ef)
 
     # Validation
     print("Validating...")
@@ -118,7 +125,7 @@ if __name__ == "__main__":
     valid_cd_graph = internal_encoder.encode_dataset(valid_graph_cd_dataset)
 
     predictions, _, _, _ = apply_model(valid_cd_graph)   # Ignore activations, don't save.
-    compute_metrics(predictions, dd/"valid_pos.tsv", dd/"valid_neg.tsv", ed/"valid_metrics.txt")
+    compute_metrics(predictions, dd/"valid_pos.tsv", dd/"valid_neg.tsv", ef/"valid_metrics.txt")
     # TODO: print_best_threshold
 
     # Test (saves predictions for manual exam)
@@ -128,7 +135,7 @@ if __name__ == "__main__":
     test_cd_graph = internal_encoder.encode_dataset(test_graph_cd_dataset)
 
     predictions, fl2, fl1, fl0 = apply_model(test_cd_graph, save_run=True)
-    compute_metrics(predictions, dd/"test_pos.tsv", dd/"test_neg.tsv", ed/"test_metrics.txt")
+    compute_metrics(predictions, dd/"test_pos.tsv", dd/"test_neg.tsv", ef/"test_metrics.txt")
 
     # Explain
     print("Computing prediction explanations...")

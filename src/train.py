@@ -14,9 +14,7 @@ from utils import type_pred
 
 
 def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecoder, model,
-          cd_graph: CDGraph, train_examples) :
-
-    ed = cfg.get_exp_dir()
+          cd_graph: CDGraph, train_examples, experiment_folder) :
 
     train_y = torch.zeros_like(cd_graph.features)
     examples_excluded = 0
@@ -42,7 +40,7 @@ def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecod
     optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
     # optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=5e-4)
 
-    checkpoints_folder = ed / "checkpoints"
+    checkpoints_folder = experiment_folder / "checkpoints"
     if not os.path.exists(checkpoints_folder):
         os.makedirs(checkpoints_folder)
 
@@ -121,5 +119,5 @@ def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecod
             num_bad_iterations = 0
             min_loss = loss
 
-    torch.save(model, ed / "model.pt")
+    torch.save(model, experiment_folder / "model.pt")
 
