@@ -54,7 +54,7 @@ In each tsv file, each line corresponds to a single fact of the form "[subject]\
 
 First edit `./src/config.yaml` to select your preferred configuration. This file has several options:
 
-- data_dir: the path of the folder that contains the files for each benchmark/dataset (usually this is a subfolder of ./data)
+- data_dir: the path of the folder that the benchmark/dataset for this experiment (usually this is a subfolder of ./data)
 - exp_dir: the path of the folder where the folder with experiment results for this benchmar will be stored. We recommend using `./experiments`.
 - use_dummy_constants: parameter set to `true` or `false` to introduce dummy constants in the training graph to disincentivise false positives. 
 - encoding_scheme: currently only `canonical` or `iclr22` are supported, corresponding to the canonical encoding or the encoding described in our ICLR22 paper [1]
