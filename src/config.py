@@ -12,31 +12,17 @@ class AggregationType(Enum):
 
 class ExperimentConfig:
 
-    # Folder with the specific dataset
-    data_dir: Path
-    # Folder where you store the experiment folders
-    exp_dir: Path
-    # Encoding/decoding scheme (canonical or iclr22)
-    encoding_scheme: EncoderType
-    # Aggregation functions for layer 1
-    agg_function_1: AggregationType
-    # Aggregation functions for layer 2
-    agg_function_2: AggregationType
-    # Model threshold for derivation; must be between 0 and 1
-    derivation_threshold: float
-    # Use dummy nodes during training (this is a training optimisation that sometimes helps)
-    use_dummies: bool
-    # Clamp weights whose absolute value is smaller than this to 0.
-    clamping: float
-    # Use only non-negative weights in the model's matrices.
-    non_negative_weights: bool
+    data_dir: Path  # Folder with the specific dataset with all training, validation, and test data.
+    exp_dir: Path  # Folder where all experiment folders are stored (we will create a new experiment folder in here)
+    encoding_scheme: EncoderType  # Encoding/decoding scheme (canonical or iclr22)
+    agg_function_1: AggregationType  # Aggregation functions for layer 1
+    agg_function_2: AggregationType  # Aggregation functions for layer 2
+    derivation_threshold: float # Model threshold for derivation; must be between 0 and 1
+    use_dummies: bool  # Use dummy nodes during training (this is a training optimisation that sometimes helps)
+    clamping: float  # Clamp weights whose absolute value is smaller than this to 0. [CURRENTLY UNSUPPORTED]
+    non_negative_weights: bool  # Use only non-negative weights in the model's matrices.
 
-    def get_exp_dir(self) -> Path:
-        return self.exp_dir
-
-    def get_data_dir(self) -> Path:
-        return self.data_dir
-
+    # TODO: factor out boilerplate (use utils.check or define a similar one)
     def __init__(self, config_path: str):
 
         with open(config_path) as f:

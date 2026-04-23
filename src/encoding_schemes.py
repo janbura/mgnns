@@ -33,11 +33,11 @@ class CanonicalEncoderDecoder:
             for i, predicate in enumerate(unary_predicates):
                 self.unary_pred_position_dict[predicate] = i
             if not self.unary_pred_position_dict:
-                self.unary_pred_position_dict[self.DUMMY_PRED] = 0
+                self.unary_pred_position_dict[self.DUMMY_PRED] = 0 # Add a single dummy unary predicate
             for i, predicate in enumerate(binary_predicates):
                 self.binary_pred_colour_dict[predicate] = i
             if not self.binary_pred_colour_dict:
-                self.binary_pred_colour_dict[self.DUMMY_COL] = 0
+                self.binary_pred_colour_dict[self.DUMMY_COL] = 0 # Add a single dummy colour
 
     def save_to_file(self, target_file):
         output = open(target_file, 'w')

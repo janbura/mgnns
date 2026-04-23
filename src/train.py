@@ -16,6 +16,7 @@ from utils import type_pred
 def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecoder, model,
           cd_graph: CDGraph, train_examples, experiment_folder) :
 
+    # Create positive examples for training
     train_y = torch.zeros_like(cd_graph.features)
     examples_excluded = 0
     for s, p, o in train_examples:
