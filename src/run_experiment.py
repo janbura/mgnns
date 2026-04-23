@@ -43,8 +43,7 @@ if __name__ == "__main__":
         # Encode
         cd_dataset = external_encoder.encode_dataset(dataset) #  dataset in input signature -> dataset in cd-signature
         cd_graph = internal_encoder.encode_dataset(cd_dataset) # dataset in cd-signature -> cd_graph
-        data = Data(x=cd_graph.features, edge_index=cd_graph.edges, edge_type=cd_graph.edge_colours).to(device)
-        model.eval() # cd_graph -> pytorch geometric graph
+        data = Data(x=cd_graph.features, edge_index=cd_graph.edges, edge_type=cd_graph.edge_colours).to(device)  # cd_graph -> pytorch geometric graph
 
         # Apply model
         features_layer_2, features_layer_1 = model(data) # note: features_layer_1 comes already detached
