@@ -1,2 +1,9 @@
+<<<<<<< HEAD
 "I am pono"
 
+"Whatever"
+
+
+=======
+I am Bert
+>>>>>>> test
