@@ -4,13 +4,14 @@ import argparse
 import data_parser
 from encoding_schemes import CanonicalEncoderDecoder, ICLREncoderDecoder, IdentityEncoderDecoder
 from config import EncoderType
+from src.gnn_transformation import apply_gnn_transformation
 from utils import check, load_predicates
 from train import train
 from config import ExperimentConfig
 from compute_metrics import compute_metrics
 from fact_explanation import FactExplainer
 from gnn_architectures import GNN
-from cd_graph import CDGraph
+from cd_graph import CDGraph, TraceCollector
 from datetime import datetime
 from pathlib import Path
 import shutil
@@ -32,49 +33,6 @@ if __name__ == "__main__":
     shutil.copy(args.config_file, ef) # Copy configuration into experiment folder
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    # Reusable function to apply the model to a given dataset (in the input data signature), returning a dictionary
-    # mapping each prediction (also in the input data signature) to its score, and the activations of layers
-    # 2, 1, and 0 as tensors.
-    def apply_model(dataset: set[tuple[str, str, str]], save_run=False):
-
-        facts_scores_dict = {}  # return argument: dictionary mapping triples (s,p,o) to a score
-
-        # Encode
-        cd_dataset = external_encoder.encode_dataset(dataset) #  dataset in input signature -> dataset in cd-signature
-        cd_graph = internal_encoder.encode_dataset(cd_dataset) # dataset in cd-signature -> cd_graph
-        data = Data(x=cd_graph.features, edge_index=cd_graph.edges, edge_type=cd_graph.edge_colours).to(device)
-        model.eval() # cd_graph -> pytorch geometric graph
-
-        # Apply model
-        features_layer_2, features_layer_1 = model(data) # note: features_layer_1 comes already detached
-
-        # Decode
-        output_cd_graph = CDGraph(cd_graph.col_size, cd_graph.delta, features_layer_2.detach().clone(), cd_graph.edges,
-                                  cd_graph.edge_colours, cd_graph.node_names) # pytorch geometric graph -> cd_graph
-        cd_facts_scores_dict = internal_encoder.decode_graph(output_cd_graph, cfg.derivation_threshold) # cd_graph ->
-                                                                                            # dataset in cd-signature
-        for (s, p, o), score in cd_facts_scores_dict.items(): # cd_dataset -> dataset in input signature
-            ss, pp, oo = external_encoder.decode_fact(s, p, o)
-            facts_scores_dict[(ss, pp, oo)] = cd_facts_scores_dict[(s, p, o)]
-
-        # Save to disk
-        if save_run:
-            derivations_file = ef / "predicted_triples.tsv"
-            derivations_file_scored = ef / "predicted_triples_scored.tsv"
-            to_print = []
-            for (s, p, o) in facts_scores_dict:
-                to_print.append((facts_scores_dict[s, p, o], (s, p, o)))
-            to_print = sorted(to_print, reverse=True) # Print from the fact with the highest score to the least
-            with open(derivations_file, 'w') as output:
-                for (score, (s, p, o)) in to_print:
-                    output.write("{}\t{}\t{}\n".format(s, p, o))
-            with open(derivations_file_scored, 'w') as output2:
-                for (score, (s, p, o)) in to_print:
-                    output2.write("{}\t{}\t{}\t{}\n".format(s, p, o, score))
-            output.close()
-
-        return facts_scores_dict, features_layer_2.detach().clone(), features_layer_1, data.x.detach().clone()
 
     # Training (or Model Loading, if training is skipped)
     if args.skip_train:
@@ -120,18 +78,41 @@ if __name__ == "__main__":
     # Validation
     print("Validating...")
     valid_graph_dataset = data_parser.parse(check(dd / "valid_graph.tsv", "Validation graph"))
-    predictions, _, _, _ = apply_model(valid_graph_dataset)   # Ignore activations, don't save.
+    predictions = apply_gnn_transformation(valid_graph_dataset, external_encoder, internal_encoder, model,
+                                                 cfg.derivation_threshold, device) # Ignore activations, don't save.
     compute_metrics(predictions, dd/"valid_pos.tsv", dd/"valid_neg.tsv", ef/"valid_metrics.txt")
     # TODO: print_best_threshold
 
-    # Test (saves predictions for manual exam)
+    # Test
     print("Testing...")
     test_graph_dataset = data_parser.parse(check(dd / "test_graph.tsv", "Test graph"))
-    predictions, fl2, fl1, fl0 = apply_model(test_graph_dataset, save_run=True)
+    trace = TraceCollector()
+    predictions = apply_gnn_transformation(test_graph_dataset, external_encoder, internal_encoder, model,
+                                                 cfg.derivation_threshold, device, trace_collector=trace)
     compute_metrics(predictions, dd/"test_pos.tsv", dd/"test_neg.tsv", ef/"test_metrics.txt")
 
+    # Save output
+    derivations_file = ef / "predicted_triples.tsv"
+    derivations_file_scored = ef / "predicted_triples_scored.tsv"
+    to_print = []
+    for (s, p, o) in predictions:
+        to_print.append((predictions[s, p, o], (s, p, o)))
+    to_print = sorted(to_print, reverse=True)  # Print from the fact with the highest score to the least
+    with open(derivations_file, 'w') as output:
+        for (score, (s, p, o)) in to_print:
+            output.write("{}\t{}\t{}\n".format(s, p, o))
+    with open(derivations_file_scored, 'w') as output2:
+        for (score, (s, p, o)) in to_print:
+            output2.write("{}\t{}\t{}\t{}\n".format(s, p, o, score))
+    output.close()
+
     # Explanation
-    # print("Computing prediction explanations...")
-    # explainer = FactExplainer(cfg, dd /"test_graph.tsv", predictions, (fl2, fl1, fl0), minimal=args.minimal_rule)
-
-
+    print("Computing prediction explanations...")
+    explanations_file = ef / "explanations.txt"
+    with open(explanations_file, 'w') as ouput:
+        for fact in list(predictions)[:10]:  # TODO: replace magic number with parameter
+            explainer = FactExplainer(device, fact, model, cfg.derivation_threshold, trace, external_encoder, internal_encoder, args.minimal_rule)
+            rule = explainer.rule
+            output.write("{}\n".format(fact))
+            output.write(rule + '\n')
+    output.close()

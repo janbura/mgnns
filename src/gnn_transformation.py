@@ -1,0 +1,65 @@
+from inspect import trace
+from cd_graph import CDGraph
+from torch_geometric.data import Data
+
+# This is the transformation T_M defined in the paper. It has the following steps:
+# 1) Apply the external (non-canonical) encoder,
+# 2) Apply the internal (canonical) encoder,
+# 3) Apply the model
+# 4) Apply the internal (canonical) decoder,
+# 5) Apply the external (non-canonical) decoder.
+# Each step is implemented separately to enable re-use of individual steps.
+
+# Non-Canonical Encoding
+def apply_nc_encoder(dataset: set[tuple[str,str,str]], external_encoder):
+    # dataset in input signature -> dataset in cd-signature
+    return external_encoder.encode_dataset(dataset)
+
+# Canonical Encoding
+def apply_c_encoder(cd_dataset: set[tuple[str,str,str]], internal_encoder):
+    # dataset in cd-signature -> cd_graph
+    return internal_encoder.encode_dataset(cd_dataset)
+
+# Apply Model
+def apply_model(cd_graph:CDGraph, device, model, trace_collector=None):
+    # PyTorch Encoding: cd_graph -> pytorch geometric graph
+    data = Data(x=cd_graph.features, edge_index=cd_graph.edges, edge_type=cd_graph.edge_colours).to(device)
+
+    # Apply model
+    model.eval()
+    features_layer_2, features_layer_1 = model(data)  # note: features_layer_1 comes already detached
+    if trace_collector is not None:
+        trace_collector.cd_graph = cd_graph
+        trace_collector.fl2 = features_layer_2.detach().clone()
+        trace_collector.fl1 = features_layer_1.clone()
+        trace_collector.fl0 = data.x.detach().clone()
+
+    # PyTorch Decoding: pytorch geometric graph -> cd_graph
+    return CDGraph(cd_graph.col_size, cd_graph.delta, features_layer_2.detach().clone(), cd_graph.edges,
+                   cd_graph.edge_colours, cd_graph.node_names)
+
+# Canonical Decoding
+def apply_c_decoder(cd_graph, threshold, internal_encoder):
+    # cd_graph -> [dataset in cd-signature: score]
+    return internal_encoder.decode_graph(cd_graph, threshold)
+
+# Non-Canonical Decoding
+def apply_nc_decoder(cd_facts_scores_dict, external_encoder):
+    # [cd_dataset: score] -> [dataset in input signature: score]
+    facts_scores_dict = {}
+    for (s, p, o), score in cd_facts_scores_dict.items():
+        ss, pp, oo = external_encoder.decode_fact(s, p, o)
+        facts_scores_dict[(ss, pp, oo)] = cd_facts_scores_dict[(s, p, o)]
+    return facts_scores_dict
+
+
+def apply_gnn_transformation(dataset: set[tuple[str, str, str]], external_encoder, internal_encoder, model, threshold,
+                             device, trace_collector=None):
+
+    cd_dataset = apply_nc_encoder(dataset,external_encoder)
+    cd_graph = apply_c_encoder(cd_dataset,internal_encoder)
+    output_cd_graph = apply_model(cd_graph, device, model, trace_collector)
+    cd_dataset_facts_scores_dict = apply_c_decoder(output_cd_graph, threshold, internal_encoder)
+    dataset_facts_scores_dict =  apply_nc_decoder(cd_dataset_facts_scores_dict,external_encoder)
+
+    return dataset_facts_scores_dict

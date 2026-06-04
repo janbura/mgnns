@@ -196,3 +196,31 @@ def remove_redundant_atoms(rule_body):
  #                    n_clamped_weights += a
  #                    n_total_weights += b
  #            print("Percentage of clamped weights: {}".format(n_clamped_weights / n_total_weights))
+
+RULE CORRECTNESS CHECKS
+# Correctness check: check that each atom is grounded in the canonical dataset via \nu
+for (s, p, o) in rule_body:
+    if p == type_pred:
+        constant = nodes.node_const_dict[nu_variable_to_node_dict[s]]
+        assert (constant, p, o) in cd_dataset, "ERROR: This rule does not unify with the dataset. Bug."
+    else:
+        origin_constant = nodes.node_const_dict[nu_variable_to_node_dict[s]]
+        dest_constant = nodes.node_const_dict[nu_variable_to_node_dict[o]]
+        assert (origin_constant, p, dest_constant) in cd_dataset, \
+            "ERROR: the extracted rule does not unify with the dataset. Bug."
+# Correctness check: ensure that the rule is captured.
+if not rule_body:
+    gr_features = torch.FloatTensor(np.zeros((1, model.layer_dimension(0))))
+    gr_edge_list = torch.LongTensor(2, 0)
+    gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=torch.LongTensor([])).to(device)
+    gnn_output_gr = model(gr_dataset)
+    assert gnn_output_gr[0][cd_pred_pos] >= cfg.derivation_threshold, \
+        "ERROR: the extracted rule seems not to be captured by the model. This means there is a bug."
+else:
+    (gr_features, node_to_gr_row_dict, gr_edge_list,
+     gr_colour_list) = can_encoder_decoder.encode_dataset(rule_body)
+    gr_dataset = Data(x=gr_features, edge_index=gr_edge_list, edge_type=gr_colour_list).to(device)
+    gnn_output_gr = model(gr_dataset)
+    assert (gnn_output_gr[node_to_gr_row_dict[nodes.const_node_dict[x1]]][cd_pred_pos] >
+            cfg.derivation_threshold), \
+        "ERROR: the extracted rule seems not to be captured by the model. This means there is a bug."

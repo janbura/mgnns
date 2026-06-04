@@ -1,4 +1,5 @@
 import torch
+from dataclasses import dataclass
 
 # Implementation of a (col,d)-graph. It simply packages many variables into one for convenience, with some checks.
 # Colours are ALWAYS represented by integers 1...n (this is what the pytorch geometric model needs)
@@ -8,6 +9,7 @@ import torch
 # Edge_colours is a |edges|-sized list where the ith element is the colour of edge in column i of edges.
 # Node_names is a |nodes|-sized list where the ith element is the name of the node in row i of self.features.
 class CDGraph:
+
     def __init__(self, col_size: int, delta: int, features: torch.FloatTensor, edges: torch.LongTensor,
                  edge_colours: torch.LongTensor, node_names: list):
 
@@ -27,3 +29,18 @@ class CDGraph:
         self.edges = edges
         self.edge_colours = edge_colours
         self.node_names = node_names
+        self.node_names_to_indices = None
+
+    def get_node_name_to_index_dict(self):
+        if self.node_names_to_indices is None:
+            self.node_names_to_indices = {index: n_name for index, n_name in enumerate(self.node_names)}
+        return self.node_names_to_indices
+
+
+@dataclass
+class TraceCollector:
+
+    cd_graph: CDGraph = None
+    fl2: torch.Tensor = None
+    fl1: torch.Tensor = None
+    fl0: torch.Tensor = None
