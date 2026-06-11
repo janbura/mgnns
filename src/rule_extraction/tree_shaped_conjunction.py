@@ -1,6 +1,7 @@
 from bitset import BitSet
 import numpy as np
 
+# The features should be between 1 and dimension
 class FeatureMask:
     def __init__(self, dimension: int, features: set[int]):
         self.mask = BitSet.from_subset(dimension, features)
@@ -38,7 +39,7 @@ class Variable:
     def __init__(self, feature_mask: FeatureMask, level=int):
         self.features = feature_mask  # Features are represented by bitmasks
         self.level = level
-        self.children = {}  # Maps pair (col,j) to the relevant node.
+        self.children = {}  # Maps triple (l,col,j) to the relevant node.
 
     def get_feature_list(self):
         return self.features.mask.elements()

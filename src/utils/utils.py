@@ -25,7 +25,7 @@ import sys
 # https://docs.oxfordsemantic.tech/getting-started.html
 
 rdfox_server = "http://localhost:8080"
-type_pred = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
+TYPE_PRED = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type'
 
 def check(path: Path, fileid):
     if not os.path.exists(path):
@@ -84,7 +84,7 @@ def remove_redundant_atoms(rule_body):
     variable_to_unary_predicates = {x1: set()}
     parent_to_children = {}
     for (s, p, o) in rule_body:
-        if p == type_pred:
+        if p == TYPE_PRED:
             if s in variable_to_unary_predicates:
                 variable_to_unary_predicates[s].add(o)
             else:
@@ -126,7 +126,7 @@ def remove_redundant_atoms(rule_body):
     while frontier:
         y = frontier.pop()
         for pred in variable_to_unary_predicates[y]:
-            new_rule_body.append((y, type_pred, pred))
+            new_rule_body.append((y, TYPE_PRED, pred))
         if y in new_parent_to_children:
             for (R, z) in new_parent_to_children[y]:
                 new_rule_body.append((z, R, y))
@@ -200,7 +200,7 @@ def remove_redundant_atoms(rule_body):
 RULE CORRECTNESS CHECKS
 # Correctness check: check that each atom is grounded in the canonical dataset via \nu
 for (s, p, o) in rule_body:
-    if p == type_pred:
+    if p == TYPE_PRED:
         constant = nodes.node_const_dict[nu_variable_to_node_dict[s]]
         assert (constant, p, o) in cd_dataset, "ERROR: This rule does not unify with the dataset. Bug."
     else:

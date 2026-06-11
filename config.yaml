@@ -1,8 +1,0 @@
-data_dir: ./data/fb237v1
-type: link_prediction           # options: node_classification | link_prediction
-use_dummy_constants: true        # options: true | false
-encoding_scheme: iclr22          # options: iclr22 | canonical
-aggregation: max-max             # options: max-max | max-sum | sum-max | sum-sum
-derivation_threshold: 0.000000001
-non_negative_weights: true       # options: true | false
-clamping: 0 
