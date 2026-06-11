@@ -86,10 +86,10 @@ class CanonicalEncoderDecoder:
         node_names = list(nodename_feature_dict.keys()) # Correctness of this relies on dictionaries being ordered.
         edge_list = []
         edge_colour_list = []
-        for (oc, dc, pred) in edges:
-            edge_list.append([node_names.index(oc),node_names.index(dc)])
+        node_index = {name: i for i, name in enumerate(node_names)}
+        for oc, dc, pred in edges:
+            edge_list.append([node_index[oc], node_index[dc]])
             edge_colour_list.append(self.binary_pred_colour_dict[pred])
-
         return CDGraph(col_size=col_size, delta=len(self.unary_pred_position_dict),
                        features=features, edges= torch.LongTensor(torch.LongTensor(edge_list).t().contiguous()),
                        edge_colours=torch.LongTensor(edge_colour_list), node_names=node_names)
