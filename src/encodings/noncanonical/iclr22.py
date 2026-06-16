@@ -158,46 +158,49 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
             if second_data_var is None:
                 second_data_var = new_variable()
             for feat in can_var.get_feature_list():
-                can_predicate = internal_encoder.unary_pred_position_dict.inverse[feat]
+                # TODO: this conversion is a pain. Might be easier to rename features to go from 0 to dim-1
+                can_predicate = internal_encoder.unary_pred_position_dict.inverse[feat-1]
                 data_predicate = self.input_predicate_to_unary_canonical_dict.inverse[can_predicate]
                 data_conj.append((first_data_var, data_predicate, second_data_var))
             # Next, unfold children
-            for (_, col, _), child_var in can_var.children:
-                if col==self.col1:
+            for (_, col, _), child_var in can_var.children.items():
+                bin_pred = internal_encoder.binary_pred_colour_dict.inverse[col]
+                if bin_pred == self.col1:
                     # This is a binary node, and the edge is c1, so target must be unary node matching first var
                     unfold_variable_for_single(child_var, first_data_var)
-                elif col==self.col2:
+                elif bin_pred == self.col2:
                     # Analogous to above
                     unfold_variable_for_single(child_var, second_data_var)
                     # Still a pair, but order must be reversed
-                elif col==self.col3:
+                elif bin_pred == self.col3:
                     unfold_variable_for_pair(child_var, second_data_var, first_data_var)
                 else:
-                    raise ValueError(f"Binary fact in canonical atom uses predicate {col} which is not valid.")
+                    raise ValueError(f"Binary fact in canonical atom uses predicate {bin_pred} which is not valid.")
 
         # Unfold unary canonical atom that unifies with a constant in the original signature (single).
         def unfold_variable_for_single(can_var, data_var: str):
             # First, add the relevant atoms.
             for feat in can_var.get_feature_list():
-                can_predicate = internal_encoder.unary_pred_position_dict.inverse[feat]
+                can_predicate = internal_encoder.unary_pred_position_dict.inverse[feat-1] # features go from 1 to d
                 data_predicate = self.input_predicate_to_unary_canonical_dict.inverse[can_predicate]
                 data_conj.append((data_var, TYPE_PRED, data_predicate))
             # Next, unfold children
-            for (_, col, _), child_var in can_var.children:
-                if col == self.col1:
+            for (_, col, _), child_var in can_var.children.items():
+                bin_pred = internal_encoder.binary_pred_colour_dict.inverse[col]
+                if bin_pred == self.col1:
                     # This is a unary node, and the edge is c1, so target must be a binary node matching first var
                     unfold_variable_for_pair(child_var,first_data_var=data_var)
-                elif col == self.col2:
+                elif bin_pred == self.col2:
                     # Analogous to above
                     unfold_variable_for_pair(child_var, second_data_var=data_var)
-                elif col == self.col4:
+                elif bin_pred == self.col4:
                     # The target must be another unary node.
                     new_data_var = new_variable()
                     # A top fact must be added to reflect these two variables are connected.
                     data_conj.append((data_var, top_predicate, new_data_var))
                     unfold_variable_for_single(child_var,new_data_var)
                 else:
-                    raise ValueError(f"Binary fact in canonical atom uses predicate {col} which is not valid.")
+                    raise ValueError(f"Binary fact in canonical atom uses predicate {bin_pred} which is not valid.")
 
         if head_is_binary:
             unfold_variable_for_pair(can_conj.root_node, root_variables[0], root_variables[1])

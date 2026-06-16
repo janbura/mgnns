@@ -50,9 +50,6 @@ def test_valid_config_loads(tmp_path):
 
 
 def test_invalid_data_dir_raises(tmp_path):
-    exp_dir = tmp_path / "experiments"
-    exp_dir.mkdir()
-
     config_file = write_config(
         tmp_path,
         data_dir=str(tmp_path / "missing_directory"),

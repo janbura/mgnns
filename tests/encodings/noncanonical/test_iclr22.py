@@ -33,11 +33,10 @@ def test_initialisation(encoder):
     assert encoder.canonical_binary_predicates == [encoder.col1, encoder.col2, encoder.col3, encoder.col4]
 
 def test_encode_dataset(encoder,sample_dataset):
+    cd_dataset = encoder.encode_dataset(sample_dataset)
 
     assert encoder.pair_term_dict[("a","b")] == "term-for-a-b"
     assert encoder.pair_term_dict.inverse["term-for-a-b"] == ("a","b")
-
-    cd_dataset = encoder.encode_dataset(sample_dataset)
 
     # Test generated cd_dataset
     assert ("a", TYPE_PRED, "A") in cd_dataset
@@ -66,8 +65,8 @@ def test_decode_binary_fact(encoder):
 def test_decode_unary_facts(encoder,sample_dataset):
     # TODO: consider making "term-for" and "unary-for" and dashes into protected strings
     encoder.encode_dataset(sample_dataset) # Necessary to create the relevant terms
-    assert ("a",TYPE_PRED,"A") in encoder.decode_fact("a",TYPE_PRED,"A")
-    assert ("a","R","b") in encoder.decode_fact("term-for-a-b",TYPE_PRED,"unary-for-R")
+    assert ("a",TYPE_PRED,"A") == encoder.decode_fact("a",TYPE_PRED,"A")
+    assert ("a","R","b") == encoder.decode_fact("term-for-a-b",TYPE_PRED,"unary-for-R")
 
 def test_decoder_dataset(encoder,sample_dataset):
     encoder.encode_dataset(sample_dataset) # Necessary to create the relevant terms
@@ -81,10 +80,10 @@ def test_init_from_file():
         f.write(content)
         file_path = f.name
 
-    encoder = IdentityEncoderDecoder(load_from_document=file_path)
+    encoder = ICLREncoderDecoder(load_from_document=file_path)
 
     assert "A" in encoder.canonical_unary_predicates
-    assert "unary-for-R" in encoder.canonical_binary_predicates
+    assert "unary-for-R" in encoder.canonical_unary_predicates
 
     os.remove(file_path)
 
@@ -149,7 +148,7 @@ def test_unfold_unary_head(encoder):
     assert ("X0", TYPE_PRED, "B") in data_conj # from features in variable a
     assert ("X0", "R", "X1") in data_conj
     assert ("X0", "S", "X1") in data_conj # from features in variable b
-    assert ("X1", "R", "X0") in data_conj # from features in variable c
+    assert ("X1", "S", "X0") in data_conj # from features in variable c
     assert ("X1", "top-pred", "X2")
     assert ("X2", TYPE_PRED, "B") # from features in variable d
     assert ("X3", "R", "X0") # from features in variable e
@@ -166,19 +165,19 @@ def test_unfold_binary_head(encoder):
     )
     # Simple treelike conjunction with 4 variables
     feature_mask_a = FeatureMask(dimension=4, features={3, 4})
-    variable_a = Variable(feature_mask_a, level=2)  # Represents constant ab
+    variable_a = Variable(feature_mask_a, level=2)  # Represents constant ab, facts R(a,b) S(a,b)
 
     feature_mask_b = FeatureMask(dimension=4, features={1})
-    variable_b = Variable(feature_mask_b, level=1)  # Represents constant a
+    variable_b = Variable(feature_mask_b, level=1)  # Represents constant a, fact A(a)
 
     feature_mask_c = FeatureMask(dimension=4, features={4})
-    variable_c = Variable(feature_mask_c, level=0)  # Represents constant ca
+    variable_c = Variable(feature_mask_c, level=0)  # Represents constant ca, fact S(c,a)
 
     feature_mask_d = FeatureMask(dimension=4, features={3})
-    variable_d = Variable(feature_mask_d, level=0)  # Represents constant ba
+    variable_d = Variable(feature_mask_d, level=0)  # Represents constant ba, fact R(b,a)
 
     feature_mask_e = FeatureMask(dimension=4, features={2})
-    variable_e = Variable(feature_mask_e, level=0)  # Represents constant d
+    variable_e = Variable(feature_mask_e, level=0)  # Represents constant d, fact B(d)
 
     variable_a.children[(1, 0, 0)] = variable_b  # layer 1, colour 1, position 1 (the position does not matter)
     variable_b.children[(0, 1, 3)] = variable_c  # layer 0, colour 2, position 4
@@ -187,7 +186,7 @@ def test_unfold_binary_head(encoder):
     conj = TreeShapedConjunction(2, 2)
     conj.root_node = variable_a
 
-    data_conj, root_vars = external.unfold(conj, head_is_binary=False, internal_encoder=internal)
+    data_conj, root_vars = external.unfold(conj, head_is_binary=True, internal_encoder=internal)
 
     # Validate root variable
     assert root_vars == ["X0","X1"]
@@ -209,4 +208,4 @@ def test_unfold_empty(encoder):
     )
     conj = TreeShapedConjunction(1,1)
     result = encoder.unfold(conj, head_is_binary=False, internal_encoder=internal)
-    assert result == []
+    assert result[0] == []

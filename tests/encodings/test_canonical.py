@@ -108,7 +108,7 @@ def test_decode_graph():
     )
 
     # Create a simple CDGraph manually with no edges
-    features = torch.tensor([[0.9], [0.1]])
+    features = torch.tensor([[0.9, 0.1],[0.1,0.4]], dtype=torch.float32)
     edges = torch.zeros((2, 0), dtype=torch.long)
     edge_colours = torch.zeros((0,), dtype=torch.long)
 
