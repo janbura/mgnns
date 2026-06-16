@@ -52,7 +52,7 @@ In each tsv file, each line corresponds to a single fact of the form "[subject]\
 
 ## How to Run the Experiments
 
-First edit `./src/config.yaml` to select your preferred configuration. This file has several options:
+First edit `./src/config/config.yaml` to select your preferred configuration. This file has several options:
 
 - data_dir: the path of the folder that the benchmark/dataset for this experiment (usually this is a subfolder of ./data)
 - exp_dir: the path of the folder where the folder with experiment results for this benchmar will be stored. We recommend using `./experiments`.
@@ -67,10 +67,12 @@ First edit `./src/config.yaml` to select your preferred configuration. This file
 To train and apply a GNN model for a given benchmark with the structure described in the previous section, please open a terminal in the root directory and run 
 
 ```bash
-  python run_experiment.py --config-file ./src/config.yaml
+  python run_experiment.py ./src/config/config.yaml
 ```
 
 This will create a new folder in `./experiments` labelled by the dataset name (the name of the folder whose path is data_dir) followed by the timestamp of the experiment start. The experiment should create the following files:
+
+You can run the experiment with the option --load_model [folder of a previous experiment]. This will load the model and encoder from a previous experiment. This can be useful to skip training; however, please be mindful that the model parameters in that experiment match those in your current folder. Further support to validate this condition should eventually be added.
 
 ```
 experiment_name
