@@ -1,24 +1,27 @@
 import torch
 from torch_geometric.data import Data, DataLoader
 import argparse
-import data_parser
-from encoding_schemes import CanonicalEncoderDecoder, ICLREncoderDecoder, IdentityEncoderDecoder
-from config import EncoderType
-from src.gnn_transformation import apply_gnn_transformation
-from utils import check, load_predicates
-from train import train
-from config import ExperimentConfig
-from compute_metrics import compute_metrics
-from fact_explanation import FactExplainer
-from gnn_architectures import GNN
-from cd_graph import CDGraph, TraceCollector
+from src.utils.data_parser import parse
+from src.encodings.canonical import CanonicalEncoderDecoder
+from src.encodings.noncanonical.identity import IdentityEncoderDecoder
+from src.encodings.noncanonical.iclr22 import ICLREncoderDecoder
+from src.config.config import EncoderType, ExperimentConfig
+from src.model.gnn_transformation import apply_gnn_transformation
+from src.utils.utils import check, load_predicates
+from src.run.train import train
+from src.run.compute_metrics import compute_metrics
+from src.rule_extraction.fact_explanation import FactExplainer
+from src.model.gnn_architectures import GNN
+from src.model.cd_graph import CDGraph, TraceCollector
 from datetime import datetime
 from pathlib import Path
 import shutil
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config-file', help='Path of the configuration file that controls the experiment.')
-parser.add_argument("--skip-train", action='store_true', help='Skip training phase')
+# Mandatory argument
+parser.add_argument("config_file", help='Path of the configuration file that controls the experiment.')
+# Optional arguments
+parser.add_argument("--load-model", help='Use existing model')
 parser.add_argument( "--minimal", action="store_true", help="Minimise explanatory rules" )
 
 
@@ -26,6 +29,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # TODO: handle case where no input argument is passed
     cfg = ExperimentConfig(check(args.config_file, "Configuration"))
     dd = cfg.data_dir # useful abbreviation
     ef = cfg.exp_dir / f"{dd.name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}" # Experiment folder
@@ -34,15 +38,18 @@ if __name__ == "__main__":
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+    # TODO: this idea does not work; it tries to recreate a new folder, so it forgets the old model
     # Training (or Model Loading, if training is skipped)
-    if args.skip_train:
+    if args.load_model:
         print("Loading encoder and model from file...")
-        internal_encoder = CanonicalEncoderDecoder(check(ef / 'internal_encoder.tsv', "Internal encoding"))
+        load_ef = Path(args.load_model)
+        # TODO: read the load_config and assert the important bits (e.g. aggregation) match.
+        internal_encoder = CanonicalEncoderDecoder(check(load_ef/ 'internal_encoder.tsv', "Internal encoding"))
         if cfg.encoding_scheme == EncoderType.ICLR22:
-            external_encoder = ICLREncoderDecoder(check(ef / 'external_encoder.tsv', "External encoding"))
+            external_encoder = ICLREncoderDecoder(check(load_ef / 'external_encoder.tsv', "External encoding"))
         else:
-            external_encoder = IdentityEncoderDecoder(check(ef / 'external_encoder.tsv', "External encoding"))
-        model = torch.load(check(ef / "model.pt", "Model"), weights_only=False).to(device)
+            external_encoder = IdentityEncoderDecoder(check(load_ef / 'external_encoder.tsv', "External encoding"))
+        model = torch.load(check(load_ef / "model.pt", "Model"), weights_only=False).to(device)
     else:
         print("Training...")
 
@@ -61,10 +68,10 @@ if __name__ == "__main__":
 
         # Load & encode training data
         # TODO: sanity check - warn if the training data contains any predicates out of the signature.
-        graph_dataset = data_parser.parse(check(dd / "train_graph.tsv", "Training graph"))
+        graph_dataset = parse(check(dd / "train_graph.tsv", "Training graph"))
         cd_dataset = external_encoder.encode_dataset(graph_dataset, use_dummy_constants=cfg.use_dummies)
         cd_graph = internal_encoder.encode_dataset(cd_dataset)
-        train_examples_dataset = data_parser.parse(check(dd / "train_pos.tsv", "Training positive examples"))
+        train_examples_dataset = parse(check(dd / "train_pos.tsv", "Training positive examples"))
         cd_train_examples = external_encoder.encode_dataset(train_examples_dataset)
 
         model = GNN(feature_dimension=cd_graph.delta,num_edge_colours=cd_graph.col_size,
@@ -77,7 +84,7 @@ if __name__ == "__main__":
 
     # Validation
     print("Validating...")
-    valid_graph_dataset = data_parser.parse(check(dd / "valid_graph.tsv", "Validation graph"))
+    valid_graph_dataset = parse(check(dd / "valid_graph.tsv", "Validation graph"))
     predictions = apply_gnn_transformation(valid_graph_dataset, external_encoder, internal_encoder, model,
                                                  cfg.derivation_threshold, device) # Ignore activations, don't save.
     compute_metrics(predictions, dd/"valid_pos.tsv", dd/"valid_neg.tsv", ef/"valid_metrics.txt")
@@ -85,7 +92,7 @@ if __name__ == "__main__":
 
     # Test
     print("Testing...")
-    test_graph_dataset = data_parser.parse(check(dd / "test_graph.tsv", "Test graph"))
+    test_graph_dataset = parse(check(dd / "test_graph.tsv", "Test graph"))
     trace = TraceCollector()
     predictions = apply_gnn_transformation(test_graph_dataset, external_encoder, internal_encoder, model,
                                                  cfg.derivation_threshold, device, trace_collector=trace)
@@ -109,9 +116,10 @@ if __name__ == "__main__":
     # Explanation
     print("Computing prediction explanations...")
     explanations_file = ef / "explanations.txt"
-    with open(explanations_file, 'w') as ouput:
+    with open(explanations_file, 'w') as output:
         for fact in list(predictions)[:10]:  # TODO: replace magic number with parameter
-            explainer = FactExplainer(device, fact, model, cfg.derivation_threshold, trace, external_encoder, internal_encoder, args.minimal_rule)
+            explainer = FactExplainer(device, fact, model, cfg.derivation_threshold, trace, external_encoder,
+                                      internal_encoder, args.minimal)
             rule = explainer.rule
             output.write("{}\n".format(fact))
             output.write(rule + '\n')

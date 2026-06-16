@@ -7,10 +7,10 @@
 import torch
 from torch_geometric.data import Data, DataLoader
 import os.path
-from encoding_schemes import CanonicalEncoderDecoder
-from config import ExperimentConfig
-from cd_graph import CDGraph
-from utils import type_pred
+from src.encodings.canonical import CanonicalEncoderDecoder
+from src.config.config import ExperimentConfig
+from src.model.cd_graph import CDGraph
+from src.utils.utils import TYPE_PRED
 
 
 def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecoder, model,
@@ -20,7 +20,7 @@ def train(cfg: ExperimentConfig, device, internal_encoder: CanonicalEncoderDecod
     train_y = torch.zeros_like(cd_graph.features)
     examples_excluded = 0
     for s, p, o in train_examples:
-        if p == type_pred and s in cd_graph.node_names:
+        if p == TYPE_PRED and s in cd_graph.node_names:
             train_y[cd_graph.node_names.index(s)][internal_encoder.unary_pred_position_dict[o]] = 1
         else:
             # We drop cd_examples mentioning new constants. Note that if we use ICLR as external decoder, this means

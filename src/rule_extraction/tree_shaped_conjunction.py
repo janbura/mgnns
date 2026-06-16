@@ -1,4 +1,4 @@
-from bitset import BitSet
+from src.utils.bitset import BitSet
 import numpy as np
 
 # The features should be between 1 and dimension

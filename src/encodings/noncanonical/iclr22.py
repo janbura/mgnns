@@ -140,8 +140,14 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
             data_var_counter += 1
             return data_var_prefix + str(data_var_counter)
 
+        # Find and define root variables
+        root_variables = [data_var_prefix + str(data_var_counter)]
+        if head_is_binary:
+            second_root_data_var = new_variable()
+            root_variables.append(second_root_data_var)
+
         if can_conj.is_empty():
-            return data_conj # Return the empty conjunction if the tree-shaped conjunction is empty.
+            return data_conj, root_variables # Return the empty conjunction if the tree-shaped conjunction is empty.
 
         # Unfold unary canonical atom that unifies with a canonical constant for a pair of data_constants.
         def unfold_variable_for_pair(can_var: Variable, first_data_var: str=None, second_data_var: str=None):
@@ -193,10 +199,7 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
                 else:
                     raise ValueError(f"Binary fact in canonical atom uses predicate {col} which is not valid.")
 
-        root_variables = [data_var_prefix + str(data_var_counter)]
         if head_is_binary:
-            second_root_data_var = new_variable()
-            root_variables.append(second_root_data_var)
             unfold_variable_for_pair(can_conj.root_node, root_variables[0], root_variables[1])
         else:
             unfold_variable_for_single(can_conj.root_node, root_variables[0])

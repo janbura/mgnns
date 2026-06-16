@@ -6,9 +6,9 @@
 from numpy import arange
 from numpy import trapz
 from numpy import nan_to_num
-import data_parser
+from src.utils.data_parser import parse
 import os.path
-from utils import check
+from src.utils.utils import check
 
 
 def precision(tp, fp): # Precision: true positives / positives
@@ -67,7 +67,7 @@ def compute_metrics(predictions, positive_examples, negative_examples, metrics_f
     # Facts that do not appear in our predictions file are automatically assigned a score of 0
 
     # Positive examples
-    for (s, p, o) in data_parser.parse(check(positive_examples, "Positive examples")):
+    for (s, p, o) in parse(check(positive_examples, "Positive examples")):
         for threshold in threshold_list:
             if predictions.get((s, p, o),0) > threshold: # True positive
                 threshold_to_counter[threshold][entry_for["true_positives"]] += 1
@@ -75,7 +75,7 @@ def compute_metrics(predictions, positive_examples, negative_examples, metrics_f
                 threshold_to_counter[threshold][entry_for["false_negatives"]] += 1
 
     # Negative examples
-    for (s, p, o) in data_parser.parse(check(negative_examples, "Negative examples")):
+    for (s, p, o) in parse(check(negative_examples, "Negative examples")):
         for threshold in threshold_list:
             if predictions.get((s, p, o), 0) > threshold: # False positive
                 threshold_to_counter[threshold][entry_for["false_positives"]] += 1

@@ -1,5 +1,5 @@
 from inspect import trace
-from cd_graph import CDGraph
+from src.model.cd_graph import CDGraph
 from torch_geometric.data import Data
 
 # This is the transformation T_M defined in the paper. It has the following steps:

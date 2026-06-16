@@ -1,30 +1,16 @@
-import torch
-from torch_geometric.data import Data
 import numpy as np
-import argparse
-import os.path
-import data_parser
-import nodes
-import datetime
-import sys
-from bitset import BitSet
-from config import ExperimentConfig, EncoderType
-from cd_graph import CDGraph, TraceCollector
-from encoding_schemes import CanonicalEncoderDecoder, NonCanonicalEncoder, ICLREncoderDecoder
-from src.rule_optimisation_1 import short_body_1
-from src.rule_optimisation_2 import short_body_2
-from src.tree_shaped_conjunction import TreeShapedConjunction, Variable, FeatureMask
-from utils import remove_redundant_atoms, type_pred, check
-from rule_optimisation_1 import run_optimisation_1
-from rule_optimisation_2 import run_optimisation_2
-from bidict import bidict
+from src.model.cd_graph import TraceCollector
+from src.encodings.canonical import CanonicalEncoderDecoder
+from src.encodings.noncanonical.noncanonical import NonCanonicalEncoder
+from src.rule_extraction.tree_shaped_conjunction import TreeShapedConjunction, Variable, FeatureMask
+from src.utils.utils import TYPE_PRED
 
 # This class represents the Gamma_i in the papers. It is based on the basic rule extraction algorithm, optimised
 # with information about sparsity in the model's matrices.
 
 class BasicExplanation:
 
-    def __init__(self, fe: FactExplainer):
+    def __init__(self, fe):
 
         # We initialise the conjunction as an empty tree-shaped conjunction
         self.conjunction = TreeShapedConjunction(fe.internal_encoder.get_n_unary_predicates(),
@@ -72,8 +58,8 @@ class BasicExplanation:
 
 class FactExplainer:
 
-    def __init__(self, device, fact: tuple[str,str,str], model, threshold, trace: TraceCollector, external_encoder: NonCanonicalEncoder,
-                 internal_encoder: CanonicalEncoderDecoder, minimal=False):
+    def __init__(self, device, fact: tuple[str,str,str], model, threshold, trace: TraceCollector,
+                 external_encoder: NonCanonicalEncoder, internal_encoder: CanonicalEncoderDecoder, minimal=False):
 
         self.device = device
         self.model = model
@@ -89,7 +75,7 @@ class FactExplainer:
         self.cd_fact_const_index = self.node_to_index[self.cd_ent1]
         self.cd_fact_pred_pos = self.internal_encoder.unary_pred_position_dict[self.cd_ent3]
         # Sanity check: ensure the fact is a consequence of the model and the dataset
-        assert self.activations[self.cd_fact_const_index][self.cd_fact_pred_pos] >= threshold, \
+        assert self.activations[0][self.cd_fact_const_index][self.cd_fact_pred_pos] >= threshold, \
             "Error: the fact to be explained is not derived by the model on this dataset."
 
         print("Computing Gamma_i")
@@ -116,16 +102,18 @@ class FactExplainer:
 
         # Unfold into body via external encoder/decoder
         head_is_binary = True
-        if self.ent2 is type_pred:
+        if self.ent2 is TYPE_PRED:
             head_is_binary = False
         # This converts a TreeShapedConjunction into a simple list of triples, plus a list of head variables
-        rule_body, head_variables = external_encoder.unfold(rule_body,head_is_binary,internal_encoder)
+        rule_body, head_variables = external_encoder.unfold(can_conj=rule_body,
+                                                            head_is_binary=head_is_binary,
+                                                            internal_encoder=internal_encoder)
 
         # Write the rule
         body_atoms = []
         rule_body = set(rule_body)  # Remove duplicates
         for (s, p, o) in rule_body:
-            if p == type_pred:
+            if p == TYPE_PRED:
                 body_atoms.append("<{}>[?{}]".format(o, s))
             else:
                 body_atoms.append("<{}>[?{},?{}]".format(p, s, o))
