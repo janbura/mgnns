@@ -29,12 +29,7 @@ class CDGraph:
         self.edges = edges
         self.edge_colours = edge_colours
         self.node_names = node_names
-        self.node_names_to_indices = None
-
-    def get_node_name_to_index_dict(self):
-        if self.node_names_to_indices is None:
-            self.node_names_to_indices = {index: n_name for index, n_name in enumerate(self.node_names)}
-        return self.node_names_to_indices
+        self.node_names_to_indices = {n_name: index for index, n_name in enumerate(self.node_names)}
 
 
 @dataclass

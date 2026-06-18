@@ -5,8 +5,9 @@ import pytest
 from src.encodings.canonical import CanonicalEncoderDecoder
 from src.encodings.noncanonical.iclr22 import ICLREncoderDecoder
 from src.encodings.noncanonical.identity import IdentityEncoderDecoder
-from src.rule_extraction.tree_shaped_conjunction import FeatureMask, Variable, TreeShapedConjunction
+from src.rule_extraction.tree_shaped_conjunction import Variable, TreeShapedConjunction
 from src.utils.utils import TYPE_PRED
+from src.utils.bitset import BitSet
 
 @pytest.fixture
 def encoder():
@@ -114,26 +115,26 @@ def test_unfold_unary_head(encoder):
         binary_predicates=external.canonical_binary_predicates
     )
     # Simple treelike conjunction with 4 variables
-    feature_mask_a = FeatureMask(dimension=4,features={1,2})
+    feature_mask_a = BitSet.from_subset(dimension=4,subset={0,1})
     variable_a = Variable(feature_mask_a,level=2) # Represents constant a
 
-    feature_mask_b = FeatureMask(dimension=4,features={3,4})
+    feature_mask_b = BitSet.from_subset(dimension=4,subset={2,3})
     variable_b = Variable(feature_mask_b,level=1) # Represents constant ab
 
-    feature_mask_c = FeatureMask(dimension=4,features={4})
+    feature_mask_c = BitSet.from_subset(dimension=4,subset={3})
     variable_c = Variable(feature_mask_c,level=0) # Represents constant ba
 
-    feature_mask_d = FeatureMask(dimension=4,features={2})
+    feature_mask_d = BitSet.from_subset(dimension=4,subset={1})
     variable_d = Variable(feature_mask_d,level=0) # Represents constant c
 
-    feature_mask_e = FeatureMask(dimension=4,features={3})
+    feature_mask_e = BitSet.from_subset(dimension=4,subset={2})
     variable_e = Variable(feature_mask_e,level=0) # Represents constant da
 
     variable_a.children[(1,0,0)] = variable_b # layer 1, colour 1, position 1 (the position does not matter)
     variable_b.children[(0,2,3)] = variable_c # layer 0, colour 3, position 4
     variable_a.children[(0,3,1)] = variable_d # layer 0, colour 4, position 2
     variable_a.children[(0,1,2)] = variable_e # layer 0, colour 2, position 3
-    conj = TreeShapedConjunction(2,2)
+    conj = TreeShapedConjunction(2)
     conj.root_node = variable_a
 
     data_conj, root_vars = external.unfold(conj, head_is_binary=False, internal_encoder=internal)
@@ -164,26 +165,26 @@ def test_unfold_binary_head(encoder):
         binary_predicates=external.canonical_binary_predicates
     )
     # Simple treelike conjunction with 4 variables
-    feature_mask_a = FeatureMask(dimension=4, features={3, 4})
+    feature_mask_a = BitSet.from_subset(dimension=4, subset={2, 3})
     variable_a = Variable(feature_mask_a, level=2)  # Represents constant ab, facts R(a,b) S(a,b)
 
-    feature_mask_b = FeatureMask(dimension=4, features={1})
+    feature_mask_b = BitSet.from_subset(dimension=4, subset={0})
     variable_b = Variable(feature_mask_b, level=1)  # Represents constant a, fact A(a)
 
-    feature_mask_c = FeatureMask(dimension=4, features={4})
+    feature_mask_c = BitSet.from_subset(dimension=4, subset={3})
     variable_c = Variable(feature_mask_c, level=0)  # Represents constant ca, fact S(c,a)
 
-    feature_mask_d = FeatureMask(dimension=4, features={3})
+    feature_mask_d = BitSet.from_subset(dimension=4, subset={2})
     variable_d = Variable(feature_mask_d, level=0)  # Represents constant ba, fact R(b,a)
 
-    feature_mask_e = FeatureMask(dimension=4, features={2})
+    feature_mask_e = BitSet.from_subset(dimension=4, subset={1})
     variable_e = Variable(feature_mask_e, level=0)  # Represents constant d, fact B(d)
 
     variable_a.children[(1, 0, 0)] = variable_b  # layer 1, colour 1, position 1 (the position does not matter)
     variable_b.children[(0, 1, 3)] = variable_c  # layer 0, colour 2, position 4
     variable_a.children[(0, 2, 2)] = variable_d  # layer 0, colour 3, position 3
     variable_b.children[(0, 3, 1)] = variable_e  # layer 0, colour 4, position 2
-    conj = TreeShapedConjunction(2, 2)
+    conj = TreeShapedConjunction(2)
     conj.root_node = variable_a
 
     data_conj, root_vars = external.unfold(conj, head_is_binary=True, internal_encoder=internal)
@@ -206,6 +207,6 @@ def test_unfold_empty(encoder):
         unary_predicates=["A"],
         binary_predicates=["R"]
     )
-    conj = TreeShapedConjunction(1,1)
+    conj = TreeShapedConjunction(1)
     result = encoder.unfold(conj, head_is_binary=False, internal_encoder=internal)
     assert result[0] == []

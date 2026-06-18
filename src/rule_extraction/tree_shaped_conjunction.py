@@ -1,28 +1,8 @@
 from src.utils.bitset import BitSet
 import numpy as np
 
-# The features should be between 1 and dimension
-class FeatureMask:
-    def __init__(self, dimension: int, features: set[int]):
-        self.mask = BitSet.from_subset(dimension, features)
-
-    # Given a matrix M of dimension m x n and a vector v of dim n, this computes the mask for that vector.
-    def backpropagate_relevance(self, matrix, activations=None):
-        if self.mask != 0:
-            matrix_relevant_rows = matrix[self.mask.elements(), :]
-            any_positive = np.any(matrix_relevant_rows > 0, axis=0)  # dim_{l-1} Boolean vector
-            if activations:
-                mask = (activations > 0) & any_positive
-            else:
-                mask = any_positive
-            return FeatureMask(len(activations), set(np.where(mask)[0]))
-        else:
-            # For some reason the above formula does not work in the degenerate case where it's all zeroes.
-            return FeatureMask(len(activations), set())
-
 class TreeShapedConjunction:
-    def __init__(self, n_features, n_colours):
-        self.n_features = n_features
+    def __init__(self, n_colours):
         self.n_colours = n_colours
         self.root_node = None
 
@@ -35,20 +15,24 @@ class TreeShapedConjunction:
     def __len__(self):
         return  sum(1 for _ in self.walk())
 
+
+# Represents a variable, with a given level and set of features (becoming unary predicates when unfolding the rule)
 class Variable:
-    def __init__(self, feature_mask: FeatureMask, level=int):
-        self.features = feature_mask  # Features are represented by bitmasks
+    def __init__(self, features: BitSet=None, level=int):
+        self.features = features
         self.level = level
-        self.children = {}  # Maps triple (l,col,j) to the relevant node.
+        self.children: dict[tuple[int,int,int], Variable] = {}  # Maps triple (l,col,j) to the relevant node.
 
     def get_feature_list(self):
-        return self.features.mask.elements()
+        return self.features.elements()
 
+# Note that this is a generator function
 def walk(node: Variable):
     if node is None:
         return
+    children_snapshot = list(node.children.values())  # snapshot BEFORE yielding
     yield node
-    for child in list(node.children.values()): # Snapshot to avoid iterating over new nodes
+    for child in children_snapshot:
         yield from walk(child)
 
 

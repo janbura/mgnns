@@ -2,8 +2,9 @@ import numpy as np
 from src.model.cd_graph import TraceCollector
 from src.encodings.canonical import CanonicalEncoderDecoder
 from src.encodings.noncanonical.noncanonical import NonCanonicalEncoder
-from src.rule_extraction.tree_shaped_conjunction import TreeShapedConjunction, Variable, FeatureMask
-from src.utils.utils import TYPE_PRED
+from src.rule_extraction.tree_shaped_conjunction import TreeShapedConjunction, Variable
+from src.utils.utils import TYPE_PRED, backpropagate_relevance
+from src.utils.bitset import BitSet
 
 # This class represents the Gamma_i in the papers. It is based on the basic rule extraction algorithm, optimised
 # with information about sparsity in the model's matrices.
@@ -13,39 +14,43 @@ class BasicExplanation:
     def __init__(self, fe):
 
         # We initialise the conjunction as an empty tree-shaped conjunction
-        self.conjunction = TreeShapedConjunction(fe.internal_encoder.get_n_unary_predicates(),
-                                                 fe.internal_encoder.get_n_binary_predicates)
+        self.conjunction = TreeShapedConjunction(fe.internal_encoder.get_n_binary_predicates)
         L = fe.model.num_layers
-        initial_mask = FeatureMask(self.conjunction.n_features, set())
-        root_variable = Variable(feature_mask=initial_mask, level=L)
+        initial_mask = BitSet.from_subset(fe.internal_encoder.get_n_unary_predicates(), {fe.cd_fact_pred_pos})
+        root_variable = Variable(level=L)
+        self.conjunction.root_node = root_variable
         # Maps a Variable to the (index of the) constant that grounds it. This is the \nu mapping in the paper
-        self.var_const = {root_variable: fe.cd_fact_const_index}
+        self.var_const_idx = {root_variable: fe.cd_fact_const_index}
         # Maps a (Variable, Layer) to the relevant Feature Mask. This is the paper's \mu.
         self.var_layer_mask = {(root_variable, L): initial_mask}
 
         # Paper's algorithm for constructing the conjunction
         for l in range(L, 0, -1): # Iterate backwards over all layers from L to 1 (both inclusive).
             for var in self.conjunction.walk():
-                self.var_layer_mask[(var, l - 1)] = (
-                    self.var_layer_mask[(var, l)].backpropagate_relevance(fe.model.matrix_A(l),
-                                                                          fe.activations[l - 1][self.var_const[var]]))
+                self.var_layer_mask[(var, l - 1)] = backpropagate_relevance(self.var_layer_mask[(var,l)],
+                                                                            fe.model.matrix_A(l),
+                                                                            fe.activations[l - 1][self.var_const_idx[var]])
                 # Introduce children new variables for var and define their relevant positions
                 for colour in fe.internal_encoder.get_colours():
                     edge_mask = fe.trace.cd_graph.edge_colours == colour
                     colour_edges = fe.trace.cd_graph.edges[:, edge_mask]
-                    neighbours = colour_edges[:, colour_edges[1] == self.var_const[var]][0].tolist()
+                    neighbours = colour_edges[:, colour_edges[1] == self.var_const_idx[var]][0].tolist()
                     neighbour_vectors = np.array([fe.activations[l - 1][neighbour] for neighbour in neighbours])
-                    for j in self.var_layer_mask[(var, l)].backpropagate_relevance(fe.model.matrix_B(l, colour)):
+                    for j in backpropagate_relevance(self.var_layer_mask[(var,l)],
+                                                     fe.model.matrix_B(l, colour)
+                                                     ).elements():
                         # Find the neighbour that contributes maximum to aggregation
                         best_idx = np.argmax(neighbour_vectors[:, j])
                         if neighbour_vectors[best_idx, j] > 0:
-                            new_variable = Variable(FeatureMask(fe.model.layer_dimension(l - 1), set()), level=l - 1)
-                            var.children[(colour, j)] = new_variable
-                            self.var_const[new_variable] = neighbours[best_idx]
-                            self.var_layer_mask[(new_variable, l - 1)] = FeatureMask(fe.model.layer_dimension(l - 1), {j})
+                            new_variable = Variable(BitSet.from_subset(fe.model.layer_dimension(l-1),{}),level=l-1)
+                            var.children[(l, colour, j)] = new_variable
+                            self.var_const_idx[new_variable] = neighbours[best_idx]
+                            self.var_layer_mask[(new_variable, l - 1)] = (
+                                BitSet.from_subset(fe.model.layer_dimension(l - 1), {j}))
 
-                # Add the atoms for the feature vectors in layer 0
-                var.features = self.var_layer_mask[(var,0)]
+        for var in self.conjunction.walk(): # Add the atoms for the feature vectors in layer 0
+            var.features = self.var_layer_mask[(var,0)]
+            # Needs to be done separately, otherwise this is not done to the new variables added!
 
         # TODO: Redo this
         # (gr_features, node_to_gr_row_dict, gr_edge_list, gr_colour_list) = self.can_encoder_decoder.encode_dataset(gamma_i)
@@ -109,6 +114,7 @@ class FactExplainer:
                                                             head_is_binary=head_is_binary,
                                                             internal_encoder=internal_encoder)
 
+        # TODO: rule-writing is a separate responsibility so probably can go somewhere else.
         # Write the rule
         body_atoms = []
         rule_body = set(rule_body)  # Remove duplicates

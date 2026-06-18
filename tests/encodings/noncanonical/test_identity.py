@@ -3,8 +3,9 @@ import tempfile
 
 from src.encodings.canonical import CanonicalEncoderDecoder
 from src.encodings.noncanonical.identity import IdentityEncoderDecoder
-from src.rule_extraction.tree_shaped_conjunction import FeatureMask, Variable, TreeShapedConjunction
+from src.rule_extraction.tree_shaped_conjunction import Variable, TreeShapedConjunction
 from src.utils.utils import TYPE_PRED
+from src.utils.bitset import BitSet
 
 
 # ------------------------
@@ -87,10 +88,10 @@ def test_unfold_simple_tree():
     )
 
     # Simple treelike conjunction with 4 variables
-    feature_mask_a = FeatureMask(dimension=2,features=set())
-    feature_mask_b = FeatureMask(dimension=2,features={1})
-    feature_mask_c = FeatureMask(dimension=2,features={1,2})
-    feature_mask_d = FeatureMask(dimension=2,features={2})
+    feature_mask_a = BitSet.from_subset(dimension=2,subset=set())
+    feature_mask_b = BitSet.from_subset(dimension=2,subset={0})
+    feature_mask_c = BitSet.from_subset(dimension=2,subset={0,1})
+    feature_mask_d = BitSet.from_subset(dimension=2,subset={1})
     variable_a = Variable(feature_mask_a,level=2)
     variable_b = Variable(feature_mask_b,level=0)
     variable_c = Variable(feature_mask_c,level=1)
@@ -98,7 +99,7 @@ def test_unfold_simple_tree():
     variable_a.children[(0,0,0)] = variable_b
     variable_a.children[(1,1,1)] = variable_c
     variable_c.children[(0,0,1)] = variable_d
-    conj = TreeShapedConjunction(2,2)
+    conj = TreeShapedConjunction(2)
     conj.root_node = variable_a
 
     data_conj, root_vars = external.unfold(conj, head_is_binary=False, internal_encoder=internal)
@@ -109,12 +110,12 @@ def test_unfold_simple_tree():
     # Expected facts:
     # Unfolding happens in a depth-first way, which tells us the order of the variables
     # a->b->c->d
-    assert ("X0", "R", "X1") in data_conj
+    assert ("X1", "R", "X0") in data_conj
     assert ("X1", TYPE_PRED, "A") in data_conj
-    assert ("X0", "S", "X2") in data_conj
+    assert ("X2", "S", "X0") in data_conj
     assert ("X2", TYPE_PRED, "A") in data_conj
     assert ("X2", TYPE_PRED, "B") in data_conj
-    assert ("X2", "R", "X3") in data_conj
+    assert ("X3", "R", "X2") in data_conj
     assert ("X3", TYPE_PRED, "B") in data_conj
 
 
@@ -124,7 +125,7 @@ def test_unfold_empty():
         unary_predicates=["A"],
         binary_predicates=["R"]
     )
-    conj = TreeShapedConjunction(1,1)
-    result = encoder.unfold(conj, head_is_binary=False, internal_encoder=internal)
+    conj = TreeShapedConjunction(1)
+    rule, head_vars = encoder.unfold(conj, head_is_binary=False, internal_encoder=internal)
 
-    assert result == []
+    assert rule == []

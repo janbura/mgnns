@@ -21,6 +21,8 @@ from tqdm import tqdm
 import os.path
 import sys
 
+from src.utils.bitset import BitSet
+
 # Code in this file for interfacing with RDFox is based off that found here: 
 # https://docs.oxfordsemantic.tech/getting-started.html
 
@@ -132,6 +134,31 @@ def remove_redundant_atoms(rule_body):
                 new_rule_body.append((z, R, y))
                 frontier.append(z)
     return new_rule_body
+
+# Takes as input:
+# -- a bitset of dimension m representing a relevant subset of features in some layer
+# -- a matrix of dimension m x n (typically a matrix for the previous layer)
+# -- optionally, a feature vector of dimension n that represent specific activations in the previous layer
+# It computes the relevant subset of features in the previous layer
+def backpropagate_relevance(current_relevant: BitSet, matrix, previous_activations=None):
+    if matrix.shape[0] != current_relevant.dimension:
+        raise ValueError(f"Left vector dimension {current_relevant.dimension} does not match matrix row dimension"
+                         f"{matrix.shape[0]}")
+    if previous_activations is not None and matrix.shape[1] != previous_activations.shape[0]:
+        raise ValueError(f"Right vector dimension {previous_activations.shape[0]} does not match matrix column dimension"
+                         f"{matrix.shape[1]}")
+    if not current_relevant.is_empty():
+        matrix_relevant_rows = matrix[current_relevant.elements(), :]
+        any_positive = (matrix_relevant_rows > 0).any(dim=0) # dim_{l-1} Boolean vector
+        if previous_activations is not None:
+            mask = (previous_activations > 0) & any_positive
+        else:
+            mask = any_positive
+        return BitSet.from_subset(matrix.shape[1], set(torch.where(mask)[0].tolist()))
+    else:
+        # For some reason the above formula does not work in the degenerate case where it's all zeroes.
+        return BitSet.from_subset(matrix.shape[1], set())
+
 
 
  # def threshold_matrix_values(matrix: torch.tensor, threshold: float, negative_only=False):

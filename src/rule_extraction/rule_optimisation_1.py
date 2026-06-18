@@ -24,8 +24,7 @@ def test_gr_dataset(body, fe: FactExplainer):
     else:
         cd_graph = apply_c_encoder(body,fe.internal_encoder)
         output_cd_graph = apply_model(cd_graph, fe.device, fe.model)
-        return (output_cd_graph.features[output_cd_graph.get_node_name_to_index_dict()[
-            fe.basic_explanation.root_variable]][fe.cd_fact_pred_pos] >= fe.threshold)
+        return output_cd_graph.features[fe.cd_fact_const_index][fe.cd_fact_pred_pos] >= fe.threshold
 
 def run_optimisation_1(fe: FactExplainer):
 

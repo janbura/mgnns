@@ -4,7 +4,7 @@
 @author: ----
 """
 from numpy import arange
-from numpy import trapz
+from numpy import trapezoid
 from numpy import nan_to_num
 from src.utils.data_parser import parse
 import os.path
@@ -48,7 +48,7 @@ def f1score(tp, fp, fn):
         return value
 
 def auprc(precision_vector, recall_vector):
-    return -1 * trapz(precision_vector, recall_vector)
+    return -1 * trapezoid(precision_vector, recall_vector)
 
 
 def compute_metrics(predictions, positive_examples, negative_examples, metrics_file):

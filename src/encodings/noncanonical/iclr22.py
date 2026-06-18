@@ -158,8 +158,7 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
             if second_data_var is None:
                 second_data_var = new_variable()
             for feat in can_var.get_feature_list():
-                # TODO: this conversion is a pain. Might be easier to rename features to go from 0 to dim-1
-                can_predicate = internal_encoder.unary_pred_position_dict.inverse[feat-1]
+                can_predicate = internal_encoder.unary_pred_position_dict.inverse[feat]
                 data_predicate = self.input_predicate_to_unary_canonical_dict.inverse[can_predicate]
                 data_conj.append((first_data_var, data_predicate, second_data_var))
             # Next, unfold children
@@ -181,7 +180,7 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
         def unfold_variable_for_single(can_var, data_var: str):
             # First, add the relevant atoms.
             for feat in can_var.get_feature_list():
-                can_predicate = internal_encoder.unary_pred_position_dict.inverse[feat-1] # features go from 1 to d
+                can_predicate = internal_encoder.unary_pred_position_dict.inverse[feat]
                 data_predicate = self.input_predicate_to_unary_canonical_dict.inverse[can_predicate]
                 data_conj.append((data_var, TYPE_PRED, data_predicate))
             # Next, unfold children
