@@ -35,6 +35,8 @@ class BasicExplanation:
                     edge_mask = fe.trace.cd_graph.edge_colours == colour
                     colour_edges = fe.trace.cd_graph.edges[:, edge_mask]
                     neighbours = colour_edges[:, colour_edges[1] == self.var_const_idx[var]][0].tolist()
+                    if not neighbours:
+                        continue
                     neighbour_vectors = np.array([fe.activations[l - 1][neighbour] for neighbour in neighbours])
                     for j in backpropagate_relevance(self.var_layer_mask[(var,l)],
                                                      fe.model.matrix_B(l, colour)
@@ -42,7 +44,7 @@ class BasicExplanation:
                         # Find the neighbour that contributes maximum to aggregation
                         best_idx = np.argmax(neighbour_vectors[:, j])
                         if neighbour_vectors[best_idx, j] > 0:
-                            new_variable = Variable(BitSet.from_subset(fe.model.layer_dimension(l-1),{}),level=l-1)
+                            new_variable = Variable(level=l-1)
                             var.children[(l, colour, j)] = new_variable
                             self.var_const_idx[new_variable] = neighbours[best_idx]
                             self.var_layer_mask[(new_variable, l - 1)] = (
@@ -51,6 +53,8 @@ class BasicExplanation:
         for var in self.conjunction.walk(): # Add the atoms for the feature vectors in layer 0
             var.features = self.var_layer_mask[(var,0)]
             # Needs to be done separately, otherwise this is not done to the new variables added!
+
+
 
         # TODO: Redo this
         # (gr_features, node_to_gr_row_dict, gr_edge_list, gr_colour_list) = self.can_encoder_decoder.encode_dataset(gamma_i)
@@ -71,7 +75,7 @@ class FactExplainer:
         self.threshold = threshold
         self.external_encoder = external_encoder
         self.internal_encoder = internal_encoder
-        self.activations = [trace.fl2,trace.fl1,trace.fl0]
+        self.activations = [trace.fl0,trace.fl1,trace.fl2] # Index matches layer
         self.trace = trace
         self.fact = fact
         self.ent1, self.ent2, self.ent3 = fact
@@ -80,7 +84,7 @@ class FactExplainer:
         self.cd_fact_const_index = self.node_to_index[self.cd_ent1]
         self.cd_fact_pred_pos = self.internal_encoder.unary_pred_position_dict[self.cd_ent3]
         # Sanity check: ensure the fact is a consequence of the model and the dataset
-        assert self.activations[0][self.cd_fact_const_index][self.cd_fact_pred_pos] >= threshold, \
+        assert self.activations[2][self.cd_fact_const_index][self.cd_fact_pred_pos] >= threshold, \
             "Error: the fact to be explained is not derived by the model on this dataset."
 
         print("Computing Gamma_i")

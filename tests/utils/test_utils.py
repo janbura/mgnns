@@ -31,6 +31,20 @@ class TestBackpropagateRelevance:
         result = backpropagate_relevance(fm, matrix, activations)
         assert result.as_set() == {2}
 
+    def test_zero_activations_cancel_everything(self):
+        fm = BitSet.from_subset(3, {0,1,2})
+        matrix = torch.tensor(
+            [
+                [1, 1, 1],
+                [1, 1, 1],
+                [1, 1, 1],
+            ]
+        )
+        activations = torch.tensor([0, 1, 1])
+        result = backpropagate_relevance(fm, matrix, activations)
+        assert result.as_set() == {1,2}
+
+
     def test_backpropagate_relevance_activations_filter_everything(self):
         fm = BitSet.from_subset(2, {0,1})
         matrix = torch.tensor(

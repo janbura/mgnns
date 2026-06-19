@@ -99,15 +99,21 @@ class ICLREncoderDecoder(NonCanonicalEncoder):
             return ab, TYPE_PRED, self.input_predicate_to_unary_canonical_dict[p]
 
     def decode_dataset(self, canonical_dataset):
-        return {self.decode_fact(s, p, o) for s, p, o in canonical_dataset}
+        return {decoded for s, p, o in canonical_dataset
+                if (decoded := self.decode_fact(s, p, o)) is not None}
 
     def decode_fact(self, s, p, o):
         # All facts in an encoded dataset are unary; binary facts should not be decoded.
         assert(p == TYPE_PRED)
-        if s in self.pair_term_dict.values():
+        data_predicate = self.input_predicate_to_unary_canonical_dict.inverse[o]
+        if s in self.pair_term_dict.values() and self.input_predicate_to_arity[data_predicate] == 2:
+            # We filter out any facts with unary-canonical predicates that match *unary* data predicates for
+            # nodes that represent pairs. Ideally no predictions would be generated, but if they are, we ignore them.
             a, b = self.pair_term_dict.inverse[s]
             return a, self.input_predicate_to_unary_canonical_dict.inverse[o], b
-        else:
+        elif self.input_predicate_to_arity[data_predicate] == 1:
+            # We filter out any facts with unary-canonical predicates that match *binary* data predicates for
+            # nodes that represent constants. Ideally no predictions would be generated, but if they are, ignore them.
             # The node should be for a single constant.
             return s, TYPE_PRED, self.input_predicate_to_unary_canonical_dict.inverse[o]
 

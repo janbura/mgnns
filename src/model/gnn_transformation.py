@@ -48,18 +48,21 @@ def apply_nc_decoder(cd_facts_scores_dict, external_encoder):
     # [cd_dataset: score] -> [dataset in input signature: score]
     facts_scores_dict = {}
     for (s, p, o), score in cd_facts_scores_dict.items():
-        ss, pp, oo = external_encoder.decode_fact(s, p, o)
-        facts_scores_dict[(ss, pp, oo)] = cd_facts_scores_dict[(s, p, o)]
+        result = external_encoder.decode_fact(s, p, o)
+        # TODO: this could be a set, of many or none
+        if result is not None: # Some canonical facts dont turn into facts
+            ss, pp, oo = result
+            facts_scores_dict[(ss, pp, oo)] = cd_facts_scores_dict[(s, p, o)]
     return facts_scores_dict
 
 
 def apply_gnn_transformation(dataset: set[tuple[str, str, str]], external_encoder, internal_encoder, model, threshold,
                              device, trace_collector=None):
 
-    cd_dataset = apply_nc_encoder(dataset,external_encoder)
-    cd_graph = apply_c_encoder(cd_dataset,internal_encoder)
-    output_cd_graph = apply_model(cd_graph, device, model, trace_collector)
-    cd_dataset_facts_scores_dict = apply_c_decoder(output_cd_graph, threshold, internal_encoder)
-    dataset_facts_scores_dict =  apply_nc_decoder(cd_dataset_facts_scores_dict,external_encoder)
+    cd_dataset = apply_nc_encoder(dataset,external_encoder) # Step 1
+    cd_graph = apply_c_encoder(cd_dataset,internal_encoder) # Step 2
+    output_cd_graph = apply_model(cd_graph, device, model, trace_collector) # Step 3
+    cd_dataset_facts_scores_dict = apply_c_decoder(output_cd_graph, threshold, internal_encoder) # Step 4
+    dataset_facts_scores_dict =  apply_nc_decoder(cd_dataset_facts_scores_dict,external_encoder) # Step 5
 
     return dataset_facts_scores_dict
