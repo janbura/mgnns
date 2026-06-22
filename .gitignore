@@ -21,3 +21,9 @@ dist/
 .vscode/
 .idea/
 *.swp
+
+# Claude Code
+CLAUDE.md
+
+# Local data (not for upstream)
+AmsterdamProject copy/
